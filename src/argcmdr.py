@@ -1,5 +1,6 @@
 import argparse
 import collections
+import importlib
 import re
 import sys
 
@@ -48,6 +49,35 @@ def main(command_class, minimum_version=(0,)):
         sys.exit(1)
     except KeyboardInterrupt:
         print("stopped")
+
+
+def execute():
+    try:
+        manager = importlib.import_module('manage')
+    except ImportError:
+        # CWD may not be in PYTHONPATH (and that's OK)
+        spec = importlib.util.spec_from_file_location('manage', 'manage.py')
+        manager = importlib.util.module_from_spec(spec)
+        try:
+            spec.loader.exec_module(manager)
+        except FileNotFoundError as exc:
+            print(f"[{exc.__class__.__name__}]" | colors.yellow,
+                  str(exc) | colors.red,
+                  end='\n\n')
+            with colors.cyan:
+                print("Hint: set PYTHONPATH to the directory containing your manage.py, e.g.:\n\n",
+                      '\tPYTHONPATH=path/to/project manage ...')
+            sys.exit(1)
+
+    root_command = next(
+        value for value in vars(manager).values()
+        if (
+            isinstance(value, type) and
+            issubclass(value, RootCommand) and
+            value is not RootCommand
+        )
+    )
+    main(root_command)
 
 
 exhaust_iterable = collections.deque(maxlen=0).extend
