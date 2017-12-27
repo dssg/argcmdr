@@ -28,6 +28,7 @@ setup(
         'Programming Language :: Python :: 3.6',
     ],
     url="https://github.com/dssg/argcmdr",
+    python_requires='>=3.6',
     package_dir={'': SRC_DIR},
     py_modules=[MODULE],
     install_requires=[
