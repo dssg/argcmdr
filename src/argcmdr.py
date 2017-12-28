@@ -8,10 +8,11 @@ from descriptors import classproperty
 from plumbum import colors
 
 
-__version__ = '0.0.2'
+__version__ = '0.0.3'
 
 __all__ = (
     'main',
+    'entrypoint',
     'Command',
     'RootCommand',
 )
@@ -52,32 +53,86 @@ def main(command_class, minimum_version=(0,)):
 
 
 def execute():
-    try:
-        manager = importlib.import_module('manage')
-    except ImportError:
-        # CWD may not be in PYTHONPATH (and that's OK)
-        spec = importlib.util.spec_from_file_location('manage', 'manage.py')
+    parser = argparse.ArgumentParser(add_help=False)
+    parser.add_argument('--manage-file')
+    (args, _remainder) = parser.parse_known_args()
+
+    # import manage.py
+    manager = None
+
+    if not args.manage_file:
+        try:
+            manager = importlib.import_module('manage')
+        except ImportError:
+            pass
+
+    if not manager:
+        # CWD may not be in PYTHONPATH (and that's OK);
+        # or, may have specified alternative location
+        file_path = args.manage_file or 'manage.py'
+        spec = importlib.util.spec_from_file_location('manage', file_path)
         manager = importlib.util.module_from_spec(spec)
         try:
             spec.loader.exec_module(manager)
-        except FileNotFoundError as exc:
-            print(f"[{exc.__class__.__name__}]" | colors.yellow,
-                  str(exc) | colors.red,
+        except FileNotFoundError:
+            print("could not import module 'manage' and file not found:" | colors.red,
+                  file_path,
                   end='\n\n')
             with colors.cyan:
-                print("Hint: set PYTHONPATH to the directory containing your manage.py, e.g.:\n\n",
-                      '\tPYTHONPATH=path/to/project manage ...')
+                print("hint: specify a manage file path via --manage-file, e.g.:",
+                      '\tmanage --manage-file=path/to/project/manage-file.py ...',
+                      "...or set PYTHONPATH to the directory containing your manage.py, e.g.:",
+                      '\tPYTHONPATH=path/to/project manage ...',
+                      sep='\n\n')
             sys.exit(1)
 
-    root_command = next(
-        value for value in vars(manager).values()
-        if (
-            isinstance(value, type) and
-            issubclass(value, RootCommand) and
-            value is not RootCommand
-        )
-    )
-    main(root_command)
+    # determine entrypoint
+    for command_filter in (
+        _is_entrypoint,
+        _is_root_command,
+        _is_command,
+    ):
+        candidates = (value for value in vars(manager).values()
+                      if command_filter(value))
+
+        try:
+            entrypoint = next(candidates)
+        except StopIteration:
+            # no matches for this filter. try the next one.
+            continue
+
+        try:
+            next(candidates)
+        except StopIteration:
+            # only one match. run it!
+            main(entrypoint)
+            return
+
+        print("multiple entrypoints found" | colors.red,
+              end='\n\n')
+        with colors.cyan:
+            print("hint: define one root command or mark "
+                  "an entrypoint with the entrypoint decorator")
+        sys.exit(1)
+
+    print("no entrypoint found. define at least one command." | colors.yellow)
+    sys.exit(1)
+
+
+def _is_entrypoint(obj):
+    return getattr(obj, '_argcmdr_entrypoint_', False)
+
+
+def _is_root_command(obj):
+    return (isinstance(obj, type) and
+            issubclass(obj, RootCommand) and
+            obj is not RootCommand)
+
+
+def _is_command(obj):
+    return (isinstance(obj, type) and
+            issubclass(obj, Command) and
+            obj is not Command)
 
 
 exhaust_iterable = collections.deque(maxlen=0).extend
@@ -108,6 +163,11 @@ class Command:
     @classmethod
     def base_parser(cls):
         parser = argparse.ArgumentParser(description=cls.__doc__)
+        parser.add_argument(
+            '--manage-file',
+            metavar='PATH',
+            help="Path to a manage command file",
+        )
         parser.add_argument(
             '--tb', '--traceback',
             action='store_true',
@@ -178,3 +238,10 @@ class RootCommand(Command):
         if cls._registry_ is not None:
             subcommands += cls._registry_
         return subcommands
+
+
+def entrypoint(cls):
+    if not isinstance(cls, type) or not issubclass(cls, Command):
+        raise TypeError(f"inappropriate entrypoint instance of type {cls.__class__}")
+    cls._argcmdr_entrypoint_ = True
+    return cls
