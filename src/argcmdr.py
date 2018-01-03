@@ -4,17 +4,21 @@ import importlib
 import re
 import sys
 
+import plumbum
+import plumbum.commands
 from descriptors import classproperty
 from plumbum import colors
 
 
-__version__ = '0.0.3'
+__version__ = '0.0.4'
 
 __all__ = (
     'main',
     'entrypoint',
     'Command',
     'RootCommand',
+    'Local',
+    'LocalRoot',
 )
 
 
@@ -40,7 +44,7 @@ def main(command_class, minimum_version=(0,)):
         check_version(minimum_version)
         parser = command_class.get_parser()
         args = parser.parse_args()
-        args.func(args)
+        args.__command__(args)
     except Exception as exc:
         if args is None or getattr(args, 'traceback', True):
             raise
@@ -72,6 +76,8 @@ def execute():
         file_path = args.manage_file or 'manage.py'
         spec = importlib.util.spec_from_file_location('manage', file_path)
         manager = importlib.util.module_from_spec(spec)
+        dont_write_bytecode = sys.dont_write_bytecode
+        sys.dont_write_bytecode = True
         try:
             spec.loader.exec_module(manager)
         except FileNotFoundError:
@@ -85,6 +91,8 @@ def execute():
                       '\tPYTHONPATH=path/to/project manage ...',
                       sep='\n\n')
             sys.exit(1)
+        finally:
+            sys.dont_write_bytecode = dont_write_bytecode
 
     # determine entrypoint
     for command_filter in (
@@ -126,13 +134,15 @@ def _is_entrypoint(obj):
 def _is_root_command(obj):
     return (isinstance(obj, type) and
             issubclass(obj, RootCommand) and
-            obj is not RootCommand)
+            obj is not RootCommand and
+            obj is not LocalRoot)
 
 
 def _is_command(obj):
     return (isinstance(obj, type) and
             issubclass(obj, Command) and
-            obj is not Command)
+            obj is not Command and
+            obj is not Local)
 
 
 exhaust_iterable = collections.deque(maxlen=0).extend
@@ -144,7 +154,7 @@ class Command:
         pass
 
     def __call__(self, args):
-        args.parser.print_usage()
+        args.__parser__.print_usage()
 
     @classproperty
     def name(cls):
@@ -152,6 +162,9 @@ class Command:
 
     @classproperty
     def help(cls):
+        if cls.__doc__ is None:
+            return None
+
         parts = re.split(r'(?:\. )|\n', cls.__doc__, 1)
         return parts[0]
 
@@ -178,15 +191,26 @@ class Command:
         return parser
 
     @classmethod
-    def build_interface(cls, parser=None):
+    def build_interface(cls, parser=None, chain=None, parents=()):
         if parser is None:
             parser = cls.base_parser()
 
         command = cls(parser)
-        parser.set_defaults(func=command, parser=parser)
+
+        children = argparse.Namespace()
+        if chain is not None:
+            setattr(chain, cls.name, command)
+
+        parser.set_defaults(
+            __command__=command,
+            __parser__=parser,
+            __parents__=parents,
+            __children__=children,
+        )
         yield (parser, command)
 
         subparsers = None
+        subparents = (command,) + parents
         for subcommand in cls.subcommands:
             if subparsers is None:
                 subparsers = parser.add_subparsers(
@@ -197,7 +221,9 @@ class Command:
             subparser = subparsers.add_parser(subcommand.name,
                                               description=subcommand.__doc__,
                                               help=subcommand.help)
-            yield from subcommand.build_interface(subparser)
+            yield from subcommand.build_interface(subparser,
+                                                  children,
+                                                  subparents)
 
     @classmethod
     def extend_parser(cls, parser):
@@ -238,6 +264,55 @@ class RootCommand(Command):
         if cls._registry_ is not None:
             subcommands += cls._registry_
         return subcommands
+
+
+class CacheDict(collections.defaultdict):
+
+    def __missing__(self, key):
+        if self.default_factory is None:
+            raise KeyError(key)
+
+        value = self[key] = self.default_factory(key)
+        return value
+
+
+class Local(Command):
+
+    local = CacheDict(plumbum.local.__getitem__)
+
+    @classmethod
+    def base_parser(cls):
+        parser = super().base_parser()
+        parser.add_argument(
+            '-q', '--quiet',
+            action='store_false',
+            default=True,
+            dest='foreground',
+            help="do not print command output",
+        )
+        return parser
+
+    def __call__(self, args):
+        commands = self.prepare(args)
+
+        if commands is None:
+            return
+
+        if isinstance(commands, plumbum.commands.BaseCommand):
+            commands = (commands,)
+
+        for command in commands:
+            if args.foreground:
+                command & plumbum.FG
+            else:
+                command()
+
+    def prepare(self, args):
+        super().__call__(args)
+
+
+class LocalRoot(Local, RootCommand):
+    pass
 
 
 def entrypoint(cls):
