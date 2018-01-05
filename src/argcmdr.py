@@ -179,7 +179,7 @@ class Command:
         parser.add_argument(
             '--manage-file',
             metavar='PATH',
-            help="Path to a manage command file",
+            help="path to a manage command file",
         )
         parser.add_argument(
             '--tb', '--traceback',
@@ -290,6 +290,30 @@ class Local(Command):
             dest='foreground',
             help="do not print command output",
         )
+        parser.add_argument(
+            '-d', '--dry-run',
+            action='store_false',
+            default=True,
+            dest='execute_commands',
+            help="do not execute commands, "
+                 "but print what they are (unless --no-show is provided)",
+        )
+        parser.add_argument(
+            '-s', '--show',
+            action='store_true',
+            default=None,
+            dest='show_commands',
+            help="print command expressions "
+                 "(by default not printed unless dry-run)",
+        )
+        parser.add_argument(
+            '--no-show',
+            action='store_false',
+            default=None,
+            dest='show_commands',
+            help="do not print command expressions "
+                 "(by default not printed unless dry-run)",
+        )
         return parser
 
     def __call__(self, args):
@@ -301,11 +325,20 @@ class Local(Command):
         if isinstance(commands, plumbum.commands.BaseCommand):
             commands = (commands,)
 
+        if args.show_commands is None:
+            show_commands = not args.execute_commands
+        else:
+            show_commands = args.show_commands
+
         for command in commands:
-            if args.foreground:
-                command & plumbum.FG
-            else:
-                command()
+            if show_commands:
+                print('>', command)
+
+            if args.execute_commands:
+                if args.foreground:
+                    command & plumbum.FG
+                else:
+                    command()
 
     def prepare(self, args):
         super().__call__(args)
