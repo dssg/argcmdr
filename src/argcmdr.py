@@ -1,6 +1,7 @@
 import argparse
 import collections
 import importlib
+import inspect
 import re
 import sys
 
@@ -38,22 +39,24 @@ def check_version(minimum_version, version_info=sys.version_info):
         )
 
 
-def main(command_class, minimum_version=(0,)):
+def main(command_class, minimum_version=(0,), argv=None, outfile=sys.stdout):
     args = None
     try:
         check_version(minimum_version)
         parser = command_class.get_parser()
-        args = parser.parse_args()
-        args.__command__(args)
+        args = parser.parse_args(argv)
+        command = args.__command__
+        command.call(args)
     except Exception as exc:
         if args is None or getattr(args, 'traceback', True):
             raise
 
         print(f"[{exc.__class__.__name__}]" | colors.yellow,
-              str(exc) | colors.red)
+              str(exc) | colors.red,
+              file=outfile)
         sys.exit(1)
     except KeyboardInterrupt:
-        print("stopped")
+        print("stopped", file=outfile)
 
 
 def execute():
@@ -193,6 +196,23 @@ class Command:
     def root(self):
         if self.__parents__:
             return self.__parents__[-1]
+
+    def call(self, args):
+        call_args = (args, args.__parser__)
+        call_arg_count = len(call_args)
+
+        signature = inspect.signature(self.__call__)
+        parameters = [name for (index, (name, param)) in enumerate(signature.parameters.items())
+                      if index < call_arg_count or param.default is param.empty]
+        param_count = len(parameters)
+
+        if param_count > call_arg_count:
+            raise TypeError(
+                f"{self.__class__.__name__}.__call__() requires too many positional arguments: " +
+                ', '.join(repr(param) for param in parameters[call_arg_count:])
+            )
+
+        self.__call__(*call_args[:param_count])
 
     @classproperty
     def name(cls):

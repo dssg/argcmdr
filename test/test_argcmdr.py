@@ -1,3 +1,5 @@
+import argparse
+import io
 import unittest
 
 from argcmdr import *
@@ -96,6 +98,80 @@ class TestCommandRoot(unittest.TestCase):
 
     def test_root_2(self):
         self.assertIs(self.leaf.root, self.root)
+
+
+class TestMainCallSignature(unittest.TestCase):
+
+    def try_main(self, *args):
+        try:
+            main(*args, argv=[])
+        except SystemExit as exc:
+            self.fail(exc)
+
+    def test_simple(self):
+        class Simple(Command):
+
+            def __call__(self_, args):
+                self.assertIsInstance(self_, Simple)
+                self.assertIsInstance(args, argparse.Namespace)
+
+        self.try_main(Simple)
+
+    def test_deep(self):
+        class Deep(Command):
+
+            def __call__(self_, args, parser):
+                self.assertIsInstance(self_, Deep)
+                self.assertIsInstance(args, argparse.Namespace)
+                self.assertIsInstance(parser, argparse.ArgumentParser)
+
+        self.try_main(Deep)
+
+    def test_fancy(self):
+        class Fancy(Command):
+
+            def __call__(self_, args, parser, lang='en'):
+                self.assertIsInstance(self_, Fancy)
+                self.assertIsInstance(args, argparse.Namespace)
+                self.assertIsInstance(parser, argparse.ArgumentParser)
+                self.assertEqual(lang, 'en')
+
+        self.try_main(Fancy)
+
+    def test_lame(self):
+        class Lame(Command):
+
+            def __call__(self_):
+                self.assertIsInstance(self_, Lame)
+
+        self.try_main(Lame)
+
+    def test_bad(self):
+        class Bad(Command):
+
+            def __call__(self_, args, parser, lang):
+                self.fail("how did this happen?")
+
+        outfile = io.StringIO()
+        with self.assertRaises(SystemExit) as context:
+            main(Bad, argv=[], outfile=outfile)
+
+        exc = context.exception.__context__
+        self.assertIsInstance(exc, TypeError)
+        self.assertEqual(exc.args, ("Bad.__call__() requires too many "
+                                    "positional arguments: 'lang'",))
+        self.assertIn(exc.args[0], outfile.getvalue())
+
+    def test_tricky(self):
+        class Tricky(Command):
+
+            def __call__(self_, args, parser=None, lang='en'):
+                self.assertIsInstance(self_, Tricky)
+                self.assertIsInstance(args, argparse.Namespace)
+                self.assertIsInstance(parser, argparse.ArgumentParser)
+                self.assertEqual(lang, 'en')
+
+        self.try_main(Tricky)
 
 
 if __name__ == '__main__':
