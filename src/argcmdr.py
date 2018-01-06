@@ -150,11 +150,49 @@ exhaust_iterable = collections.deque(maxlen=0).extend
 
 class Command:
 
+    command_lookup_error_message = (
+        "command hierarchy indices must be str (to descend), or "
+        "negative integer (to ascend), not %r"
+    )
+
     def __init__(self, parser):
-        pass
+        self.__children__ = None
+        self.__parents__ = None
 
     def __call__(self, args):
         args.__parser__.print_usage()
+
+    def __getitem__(self, key):
+        if isinstance(key, (str, bytes)) or not isinstance(key, collections.Sequence):
+            return self.__getitem__((key,))
+
+        if not key:
+            return self
+
+        head = key[0]
+
+        if isinstance(head, str):
+            if head in self.__children__:
+                item = self.__children__[head]
+            else:
+                raise KeyError(f"command {self.name} has no child {head!r}")
+        elif isinstance(head, int):
+            if head >= 0:
+                raise ValueError(self.command_lookup_error_message % head)
+
+            try:
+                item = self.__parents__[-1 - head]
+            except IndexError:
+                raise IndexError(f"command {self.name} has no parent {head!r}")
+        else:
+            raise TypeError(self.command_lookup_error_message % head)
+
+        return item.__getitem__(key[1:])
+
+    @property
+    def root(self):
+        if self.__parents__:
+            return self.__parents__[-1]
 
     @classproperty
     def name(cls):
@@ -196,16 +234,15 @@ class Command:
             parser = cls.base_parser()
 
         command = cls(parser)
+        command.__parents__ = parents
+        command.__children__ = {}
 
-        children = argparse.Namespace()
         if chain is not None:
-            setattr(chain, cls.name, command)
+            chain[cls.name] = command
 
         parser.set_defaults(
             __command__=command,
             __parser__=parser,
-            __parents__=parents,
-            __children__=children,
         )
         yield (parser, command)
 
@@ -222,7 +259,7 @@ class Command:
                                               description=subcommand.__doc__,
                                               help=subcommand.help)
             yield from subcommand.build_interface(subparser,
-                                                  children,
+                                                  command.__children__,
                                                   subparents)
 
     @classmethod
