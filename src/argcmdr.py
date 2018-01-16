@@ -197,22 +197,24 @@ class Command:
         if self.__parents__:
             return self.__parents__[-1]
 
-    def call(self, args):
+    def call(self, args, target_name='__call__'):
         call_args = (args, args.__parser__)
         call_arg_count = len(call_args)
 
-        signature = inspect.signature(self.__call__)
+        target_callable = getattr(self, target_name)
+        signature = inspect.signature(target_callable)
         parameters = [name for (index, (name, param)) in enumerate(signature.parameters.items())
                       if index < call_arg_count or param.default is param.empty]
         param_count = len(parameters)
 
         if param_count > call_arg_count:
             raise TypeError(
-                f"{self.__class__.__name__}.__call__() requires too many positional arguments: " +
+                f"{self.__class__.__name__}.{target_name}() "
+                "requires too many positional arguments: " +
                 ', '.join(repr(param) for param in parameters[call_arg_count:])
             )
 
-        self.__call__(*call_args[:param_count])
+        return target_callable(*call_args[:param_count])
 
     @classproperty
     def name(cls):
@@ -374,7 +376,7 @@ class Local(Command):
         return parser
 
     def __call__(self, args):
-        commands = self.prepare(args)
+        commands = self.call(args, 'prepare')
 
         if commands is None:
             return

@@ -174,5 +174,91 @@ class TestMainCallSignature(unittest.TestCase):
         self.try_main(Tricky)
 
 
+class TestPrepareCallSignature(unittest.TestCase):
+
+    def setUp(self):
+        self.parser = argparse.ArgumentParser()
+
+    def try_command(self, command_cls):
+        command = command_cls(self.parser)
+        self.parser.set_defaults(
+            __command__=command,
+            __parser__=self.parser,
+        )
+        args = self.parser.parse_args([])
+        command(args)
+
+    def test_simple(self):
+        class Simple(Local):
+
+            def prepare(self_, args):
+                self.assertIsInstance(self_, Simple)
+                self.assertIsInstance(args, argparse.Namespace)
+                self.assertIs(args.__command__, self_)
+                self.assertIs(args.__parser__, self.parser)
+
+        self.try_command(Simple)
+
+    def test_deep(self):
+        class Deep(Local):
+
+            def prepare(self_, args, parser):
+                self.assertIsInstance(self_, Deep)
+                self.assertIsInstance(args, argparse.Namespace)
+                self.assertIs(args.__command__, self_)
+                self.assertIs(args.__parser__, self.parser)
+                self.assertIs(parser, self.parser)
+
+        self.try_command(Deep)
+
+    def test_fancy(self):
+        class Fancy(Local):
+
+            def prepare(self_, args, parser, lang='en'):
+                self.assertIsInstance(self_, Fancy)
+                self.assertIsInstance(args, argparse.Namespace)
+                self.assertIs(args.__command__, self_)
+                self.assertIs(args.__parser__, self.parser)
+                self.assertIs(parser, self.parser)
+                self.assertEqual(lang, 'en')
+
+        self.try_command(Fancy)
+
+    def test_lame(self):
+        class Lame(Local):
+
+            def prepare(self_):
+                self.assertIsInstance(self_, Lame)
+
+        self.try_command(Lame)
+
+    def test_bad(self):
+        class Bad(Local):
+
+            def prepare(self_, args, parser, lang):
+                self.fail("how did this happen?")
+
+        with self.assertRaises(TypeError) as context:
+            self.try_command(Bad)
+
+        exc = context.exception
+        self.assertIsInstance(exc, TypeError)
+        self.assertEqual(exc.args, ("Bad.prepare() requires too many "
+                                    "positional arguments: 'lang'",))
+
+    def test_tricky(self):
+        class Tricky(Local):
+
+            def prepare(self_, args, parser=None, lang='en'):
+                self.assertIsInstance(self_, Tricky)
+                self.assertIsInstance(args, argparse.Namespace)
+                self.assertIs(args.__command__, self_)
+                self.assertIs(args.__parser__, self.parser)
+                self.assertIs(parser, self.parser)
+                self.assertEqual(lang, 'en')
+
+        self.try_command(Tricky)
+
+
 if __name__ == '__main__':
     unittest.main()
