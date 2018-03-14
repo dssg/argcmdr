@@ -8,20 +8,20 @@ The thin ``argparse`` wrapper for quick, clear and easy declaration of (hierarch
 
 * handles the boilerplate of CLI
 
-    * while maintaining the clarity and extensibility of your code
-    * without requiring you to learn Yet Another argument-definition syntax
-    * without reinventing the wheel or sacrificing the flexibility of ``argparse``
+  * while maintaining the clarity and extensibility of your code
+  * without requiring you to learn Yet Another argument-definition syntax
+  * without reinventing the wheel or sacrificing the flexibility of ``argparse``
 
 * enables invocation via
 
-    * executable script (``__name__ == '__main__'``)
-    * ``setuptools`` entrypoint
-    * command-defining module (like the ``Makefile`` of ``make``)
+  * executable script (``__name__ == '__main__'``)
+  * ``setuptools`` entrypoint
+  * command-defining module (like the ``Makefile`` of ``make``)
 
 * determines command hierarchy flexibly and cleanly
 
-    * command class declarations are nested to indicate CLI hierarchy *or*
-    * commands are decorated to indicate their hierarchy
+  * command class declarations are nested to indicate CLI hierarchy *or*
+  * commands are decorated to indicate their hierarchy
 
 * includes support for elegant interaction with the operating system, via ``plumbum``
 
