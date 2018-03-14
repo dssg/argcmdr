@@ -11,7 +11,7 @@ from descriptors import classproperty
 from plumbum import colors
 
 
-__version__ = '0.0.4'
+__version__ = '0.1.0'
 
 __all__ = (
     'main',
@@ -39,11 +39,20 @@ def check_version(minimum_version, version_info=sys.version_info):
         )
 
 
-def main(command_class, minimum_version=(0,), argv=None, outfile=sys.stdout):
+def noop(*args, **kwargs):
+    pass
+
+
+def main(command_class,
+         minimum_version=(0,),
+         argv=None,
+         outfile=sys.stdout,
+         extend_parser=noop):
     args = None
     try:
         check_version(minimum_version)
         parser = command_class.get_parser()
+        extend_parser(parser)
         args = parser.parse_args(argv)
         command = args.__command__
         command.call(args)
@@ -59,9 +68,17 @@ def main(command_class, minimum_version=(0,), argv=None, outfile=sys.stdout):
         print("stopped", file=outfile)
 
 
+def add_manage_file(parser):
+    parser.add_argument(
+        '--manage-file',
+        metavar='PATH',
+        help="path to a manage command file",
+    )
+
+
 def execute():
     parser = argparse.ArgumentParser(add_help=False)
-    parser.add_argument('--manage-file')
+    add_manage_file(parser)
     (args, _remainder) = parser.parse_known_args()
 
     # import manage.py
@@ -116,7 +133,7 @@ def execute():
             next(candidates)
         except StopIteration:
             # only one match. run it!
-            main(entrypoint)
+            main(entrypoint, extend_parser=add_manage_file)
             return
 
         print("multiple entrypoints found" | colors.red,
@@ -236,11 +253,6 @@ class Command:
     @classmethod
     def base_parser(cls):
         parser = argparse.ArgumentParser(description=cls.__doc__)
-        parser.add_argument(
-            '--manage-file',
-            metavar='PATH',
-            help="path to a manage command file",
-        )
         parser.add_argument(
             '--tb', '--traceback',
             action='store_true',
