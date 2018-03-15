@@ -573,7 +573,7 @@ Rather, ``argcmdr`` supplies its own, general-purpose ``manage`` executable comm
 Bootstrapping
 ~~~~~~~~~~~~~
 
-To ensure that such a friendly – and *relatively* high-level – project requirement such as ``argcmdr`` is satisfied, consider the expressly low-level utility install-cli_, with which to guide contributors through the process of provisioning your project's most basic requirements.
+To ensure that such a friendly – and *relatively* high-level – project requirement as ``argcmdr`` is satisfied, consider the expressly low-level utility install-cli_, with which to guide contributors through the process of provisioning your project's most basic requirements.
 
 .. _argparse: https://docs.python.org/3/library/argparse.html
 .. _python.org: https://www.python.org/downloads/
