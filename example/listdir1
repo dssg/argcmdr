@@ -1,0 +1,27 @@
+#!/usr/bin/env python
+
+import argparse
+import plumbum
+
+from argcmdr import Local, main
+
+
+class Main(Local):
+    """list directory contents"""
+
+    def __init__(self, parser):
+        parser.add_argument(
+            'remainder',
+            metavar='arguments for ls',
+            nargs=argparse.REMAINDER,
+        )
+
+    def prepare(self, args, parser):
+        try:
+            return self.local['l'][args.remainder]
+        except plumbum.CommandNotFound:
+            parser.error('command not available')
+
+
+if __name__ == '__main__':
+    main(Main)

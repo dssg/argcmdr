@@ -1,0 +1,51 @@
+#!/usr/bin/env python
+
+from argcmdr import Command, RootCommand, main
+
+
+class Git(RootCommand):
+    """another stupid content tracker"""
+
+    def __init__(self, parser):
+        parser.add_argument(
+            '-C',
+            default='.',
+            dest='path',
+            help="run as if git was started in <path> instead of the current "
+                 "working directory.",
+        )
+
+
+@Git.register
+class Stash(Command):
+    """stash the changes in a dirty working directory away"""
+
+    def __call__(self, args):
+        self['save'](args)
+
+    class Save(Command):
+        """save your local modifications to a new stash"""
+
+        def __init__(self, parser):
+            parser.add_argument(
+                '-p', '--patch',
+                dest='interactive',
+                action='store_true',
+                default=False,
+                help="interactively select hunks from the diff between HEAD "
+                     "and the working tree to be stashed",
+            )
+
+        def __call__(self, args):
+            interactive = getattr(args, 'interactive', False)
+            print("stash save", f"(interactive: {interactive})")
+
+    class List(Command):
+        """list the stashes that you currently have"""
+
+        def __call__(self):
+            print("stash list")
+
+
+if __name__ == '__main__':
+    main(Git)
