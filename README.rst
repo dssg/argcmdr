@@ -208,6 +208,134 @@ If ``ls`` is not available, the user is presented the following message upon exe
     usage: listdir [-h] [--tb] [-q] [-d] [-s] [--no-show] ...
     listdir: error: command not available
 
+Access to the parsed argument namespace
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+The command invocation's parsed arguments are most straight-forwardly accessible as the first argument of the ``Command`` invocation signature, either ``__call__`` or ``prepare``. However, in less-than-trivial implementations, wherein command methods are factored for reusability, passing the argument namespace from method to method may become tedious. To support such scenarios, this object is made additionally available via the ``Command`` *property*, ``args``.
+
+Consider a class of commands which require a database password. We don't want to store this password anywhere in plain text; rather, we expect it to be input, either via (piped) standard input or the TTY::
+
+    class DbSync(Command):
+        """sync databases"""
+
+        def __init__(self, parser):
+            parser.add_argument(
+                '-p', '--password',
+                action='store_true',
+                dest='stdin_password',
+                default=False,
+                help="read database password from standard input",
+            )
+
+        def __call__(self, args):
+            engine = self.dbengine(args)
+            ...
+
+        def dbcreds(self, args):
+            dbcreds = {
+                'username': os.getenv('PGUSER'),
+                'host': os.getenv('PGHOST'),
+                'port': os.getenv('PGPORT'),
+                'database': os.getenv('PGDATABASE'),
+            }
+
+            missing = [key for (key, value) in dbcreds.items() if not value]
+            if missing:
+                raise RuntimeError(
+                    "database connection information missing from "
+                    "environmental configuration: " + ', '.join(missing)
+                )
+
+            if args.stdin_password:
+                dbcreds['password'] = sys.stdin.read().rstrip('\n\r')
+
+                # we're done with the (pipe) stdin, so force it back to TTY for
+                # any subsequent input()
+                sys.stdin = open('/dev/tty')
+            else:
+                dbcreds['password'] = os.getenv('PGPASSWORD')
+                if not dbcreds['password']:
+                    dbcreds['password'] = getpass.getpass(
+                        'enter password for '
+                        + ('{username}@{host}:{port}'.format_map(dbcreds) | colors.bold)
+                        + ': '
+                        | colors.yellow
+                    )
+
+            return dbcreds
+
+        def dburi(self, args):
+            return sqlalchemy.engine.url.URL('postgres', **self.dbcreds(args))
+
+        def dbengine(self, args):
+            return sqlalchemy.create_engine(self.dburi(args))
+
+Not only were we forced to verbosely daisy-chain the arguments namespace, ``args``, from method to method; moreover, we were prevented from (trivially) caching the result of ``dbcreds``, to ensure that the password isn't ever requested more than once.
+
+Now, let's reimplement the above, making use of the property ``args``::
+
+    class DbSync(Command):
+        """sync databases"""
+
+        def __init__(self, parser):
+            parser.add_argument(
+                '-p', '--password',
+                action='store_true',
+                dest='stdin_password',
+                default=False,
+                help="read database password from standard input",
+            )
+
+        def __call__(self):
+            engine = self.dbengine
+            ...
+
+        @cachedproperty
+        def dbcreds(self):
+            dbcreds = {
+                'username': os.getenv('PGUSER'),
+                'host': os.getenv('PGHOST'),
+                'port': os.getenv('PGPORT'),
+                'database': os.getenv('PGDATABASE'),
+            }
+
+            missing = [key for (key, value) in dbcreds.items() if not value]
+            if missing:
+                raise RuntimeError(
+                    "database connection information missing from "
+                    "environmental configuration: " + ', '.join(missing)
+                )
+
+            if self.args.stdin_password:
+                dbcreds['password'] = sys.stdin.read().rstrip('\n\r')
+
+                # we're done with the (pipe) stdin, so force it back to TTY for
+                # any subsequent input()
+                sys.stdin = open('/dev/tty')
+            else:
+                dbcreds['password'] = os.getenv('PGPASSWORD')
+                if not dbcreds['password']:
+                    dbcreds['password'] = getpass.getpass(
+                        'enter password for '
+                        + ('{username}@{host}:{port}'.format_map(dbcreds) | colors.bold)
+                        + ': '
+                        | colors.yellow
+                    )
+
+            return dbcreds
+
+        @property
+        def dburi(self):
+            return sqlalchemy.engine.url.URL('postgres', **self.dbcreds)
+
+        @property
+        def dbengine(self):
+            return sqlalchemy.create_engine(self.dburi)
+
+In this form, ``args`` needn't be passed from method to method; in fact, methods of the ``DbSync`` command needn't worry about arguments which don't directly interest them at all. And, using ``cachedproperty`` from Dickens_, the database credentials are trivially cached, ensuring they aren't needlessly re-requested.
+
+Note that attempting to access the ``args`` property before invocation arguments have been parsed – *e.g.* within ``__init__`` – is not allowed, and will raise ``RuntimeError``.
+
 Command hierarchy
 -----------------
 
@@ -445,11 +573,12 @@ Rather, ``argcmdr`` supplies its own, general-purpose ``manage`` executable comm
 Bootstrapping
 ~~~~~~~~~~~~~
 
-To ensure that such a friendly – and *relatively* high-level – project requirement such as ``argcmdr`` is satisfied, consider the expressly low-level utility install-cli_, with which to guide contributors through the process of provisioning your project's most basic requirements.
+To ensure that such a friendly – and *relatively* high-level – project requirement as ``argcmdr`` is satisfied, consider the expressly low-level utility install-cli_, with which to guide contributors through the process of provisioning your project's most basic requirements.
 
 .. _argparse: https://docs.python.org/3/library/argparse.html
 .. _python.org: https://www.python.org/downloads/
 .. _Homebrew: https://brew.sh/
 .. _pyenv: https://github.com/pyenv/pyenv
 .. _pyenv installer: https://github.com/pyenv/pyenv-installer#installation--update--uninstallation
+.. _Dickens: https://github.com/dssg/dickens
 .. _install-cli: https://github.com/dssg/install-cli
