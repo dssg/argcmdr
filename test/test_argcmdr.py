@@ -6,6 +6,15 @@ from argcmdr import *
 from argcmdr import exhaust_iterable
 
 
+class TryMainTestCase(unittest.TestCase):
+
+    def try_main(self, *args):
+        try:
+            main(*args, argv=[])
+        except SystemExit as exc:
+            self.fail(exc)
+
+
 class TestCommandGetItem(unittest.TestCase):
 
     @classmethod
@@ -25,7 +34,7 @@ class TestCommandGetItem(unittest.TestCase):
 
     def setUp(self):
         interface = self.Root.build_interface()
-        (_parser, self.root) = next(interface)
+        (_parser, _namespace, self.root) = next(interface)
         exhaust_iterable(interface)
 
     def test_identity(self):
@@ -87,7 +96,7 @@ class TestCommandRoot(unittest.TestCase):
         })
 
     def setUp(self):
-        for (_parser, command) in self.Root.build_interface():
+        for (_parser, _namespace, command) in self.Root.build_interface():
             setattr(self, command.name, command)
 
     def test_root_0(self):
@@ -100,13 +109,7 @@ class TestCommandRoot(unittest.TestCase):
         self.assertIs(self.leaf.root, self.root)
 
 
-class TestMainCallSignature(unittest.TestCase):
-
-    def try_main(self, *args):
-        try:
-            main(*args, argv=[])
-        except SystemExit as exc:
-            self.fail(exc)
+class TestMainCallSignature(TryMainTestCase):
 
     def test_simple(self):
         class Simple(Command):
@@ -258,6 +261,29 @@ class TestPrepareCallSignature(unittest.TestCase):
                 self.assertEqual(lang, 'en')
 
         self.try_command(Tricky)
+
+
+class TestArgsProperty(TryMainTestCase):
+
+    def test_identity(self):
+        class ArgsCommand(Command):
+
+            def __call__(self_, args):
+                self.assertIs(self_.args, args)
+
+        self.try_main(ArgsCommand)
+
+    def test_error(self):
+        class BadArgsCommand(Command):
+
+            def __init__(self_, _parser):
+                with self.assertRaises(RuntimeError):
+                    self_.args
+
+            def __call__(self):
+                pass
+
+        self.try_main(BadArgsCommand)
 
 
 if __name__ == '__main__':

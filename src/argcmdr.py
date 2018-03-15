@@ -52,9 +52,9 @@ def main(command_class,
     args = None
     try:
         check_version(minimum_version)
-        parser = command_class.get_parser()
+        (parser, args) = command_class.get_parser()
         extend_parser(parser)
-        args = parser.parse_args(argv)
+        parser.parse_args(argv, args)
         command = args.__command__
         command.call(args)
     except Exception as exc:
@@ -179,6 +179,7 @@ class Command:
     def __init__(self, parser):
         self.__children__ = None
         self.__parents__ = None
+        self._args = None
 
     def __call__(self, args):
         args.__parser__.print_usage()
@@ -214,6 +215,13 @@ class Command:
     def root(self):
         if self.__parents__:
             return self.__parents__[-1]
+
+    @property
+    def args(self):
+        if getattr(self, '_args', None) is None:
+            raise RuntimeError('parsed argument namespace not available at this stage')
+        else:
+            return self._args
 
     def call(self, args, target_name='__call__'):
         call_args = (args, args.__parser__)
@@ -251,6 +259,10 @@ class Command:
         return [value for value in vars(cls).values()
                 if isinstance(value, type) and issubclass(value, Command)]
 
+    @staticmethod
+    def base_namespace():
+        return argparse.Namespace()
+
     @classmethod
     def base_parser(cls):
         parser = argparse.ArgumentParser(description=cls.__doc__)
@@ -264,13 +276,16 @@ class Command:
         return parser
 
     @classmethod
-    def build_interface(cls, parser=None, chain=None, parents=()):
+    def build_interface(cls, parser=None, namespace=None, chain=None, parents=()):
         if parser is None:
             parser = cls.base_parser()
+        if namespace is None:
+            namespace = cls.base_namespace()
 
         command = cls(parser)
         command.__parents__ = parents
         command.__children__ = {}
+        command._args = namespace
 
         if chain is not None:
             chain[cls.name] = command
@@ -279,7 +294,7 @@ class Command:
             __command__=command,
             __parser__=parser,
         )
-        yield (parser, command)
+        yield (parser, namespace, command)
 
         subparsers = None
         subparents = (command,) + parents
@@ -294,19 +309,21 @@ class Command:
                                               description=subcommand.__doc__,
                                               help=subcommand.help)
             yield from subcommand.build_interface(subparser,
+                                                  namespace,
                                                   command.__children__,
                                                   subparents)
 
     @classmethod
-    def extend_parser(cls, parser):
-        interface = cls.build_interface(parser)
+    def extend_parser(cls, parser, namespace):
+        interface = cls.build_interface(parser, namespace)
         exhaust_iterable(interface)
 
     @classmethod
     def get_parser(cls):
         parser = cls.base_parser()
-        cls.extend_parser(parser)
-        return parser
+        namespace = cls.base_namespace()
+        cls.extend_parser(parser, namespace)
+        return (parser, namespace)
 
 
 class RootCommand(Command):
