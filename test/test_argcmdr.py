@@ -1,9 +1,26 @@
 import argparse
 import io
 import unittest
+from unittest import mock
 
 from argcmdr import *
 from argcmdr import exhaust_iterable
+
+
+class TryCommandTestCase(unittest.TestCase):
+
+    def try_command(self, command_cls):
+        # ensure parser is available to tests with nested command defns
+        self.parser = command_cls.base_parser()
+
+        command = command_cls(self.parser)
+        self.parser.set_defaults(
+            __command__=command,
+            __parser__=self.parser,
+        )
+
+        args = self.parser.parse_args([])
+        command(args)
 
 
 class TryMainTestCase(unittest.TestCase):
@@ -177,19 +194,7 @@ class TestMainCallSignature(TryMainTestCase):
         self.try_main(Tricky)
 
 
-class TestPrepareCallSignature(unittest.TestCase):
-
-    def setUp(self):
-        self.parser = argparse.ArgumentParser()
-
-    def try_command(self, command_cls):
-        command = command_cls(self.parser)
-        self.parser.set_defaults(
-            __command__=command,
-            __parser__=self.parser,
-        )
-        args = self.parser.parse_args([])
-        command(args)
+class TestPrepareCallSignature(TryCommandTestCase):
 
     def test_simple(self):
         class Simple(Local):
@@ -284,6 +289,65 @@ class TestArgsProperty(TryMainTestCase):
                 pass
 
         self.try_main(BadArgsCommand)
+
+
+class TestSendCommandResult(TryCommandTestCase):
+
+    def test_execution(self):
+        class CarefulCommand(Local):
+
+            def prepare(self_, args):
+                # don't clutter test output
+                args.foreground = False
+
+                (code, std, err) = yield self_.local['which']['python']
+
+                self.assertEqual(code, 0)
+                self.assertTrue(std)
+                self.assertFalse(err)
+
+                (code, std, err) = yield self_.local['which']['TOTAL-FAKE']
+
+                self.assertEqual(code, 1)
+                self.assertFalse(std)
+                self.assertFalse(err)
+
+            prepare.retcode = None
+
+        self.try_command(CarefulCommand)
+
+    def test_dry_run(self):
+        class SmartCommand(Local):
+
+            def prepare(self_, args):
+                args.execute_commands = False
+
+                (code, std, err) = yield self_.local['which']['python']
+
+                self.assertIsNone(code)
+                self.assertIsNone(std)
+                self.assertIsNone(err)
+
+                (code, std, err) = yield self_.local['which']['TOTAL-FAKE']
+
+                self.assertIsNone(code)
+                self.assertIsNone(std)
+                self.assertIsNone(err)
+
+        self.try_command(SmartCommand)
+
+    def test_non_gen(self):
+        command = mock.Mock(spec=Local.local['which']['python'])
+
+        class SimpleCommand(Local):
+
+            def prepare(self_, args):
+                # mock not configured to handle foreground operation
+                args.foreground = False
+                return command
+
+        self.try_command(SimpleCommand)
+        command.run.assert_called_once_with()
 
 
 if __name__ == '__main__':

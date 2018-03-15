@@ -178,6 +178,60 @@ Via the ``prepare`` interface, standard output is printed by default, and your c
 
 To execute multiple local subprocesses, ``prepare`` may either return an iterable (*e.g.* ``list``) of the above ``plumbum`` bound commands, or ``prepare`` may be defined as a generator function, (*i.e.* make repeated use of ``yield`` – see below).
 
+Inspecting execution
+~~~~~~~~~~~~~~~~~~~~
+
+Subprocess commands emitted by ``Local.prepare`` are executed in order and, by default, failed execution is interrupted by a raised exception::
+
+    class Release(Local):
+        """release the package to pypi"""
+
+        def __init__(self, parser):
+            parser.add_argument(
+                'part',
+                choices=('major', 'minor', 'patch'),
+                help="part of the version to be bumped",
+            )
+
+        def prepare(self, args):
+            yield self.local['bumpversion'][args.part]
+            yield self.local['python']['setup.py', 'sdist', 'bdist_wheel']
+            yield self.local['twine']['upload', 'dist/*']
+
+Should the ``bumpversion`` command fail, the ``deploy`` command will not proceed.
+
+In some cases, however, we might like to disable this functionality, and proceed regardless of a subprocess's exit code. We may pass arguments such as ``retcode`` to ``plumbum`` by setting this attribute on the ``prepare`` method::
+
+    def prepare(self, args):
+        yield self.local['bumpversion'][args.part]
+        yield self.local['python']['setup.py', 'sdist', 'bdist_wheel']
+        yield self.local['twine']['upload', 'dist/*']
+
+    prepare.retcode = None
+
+Subprocess commands emitted by the above method will not raise execution exceptions, regardless of their exit code. (To allow only certain exit code(s), set ``retcode`` as appropriate – see plumbum_.)
+
+Having disabled execution exceptions – and regardless – we might need to be able to inspect a subprocess command's exit code, standard output or standard error. As such, (whether we manipulate ``retcode`` or not), ``argcmdr`` communicates these command results with ``prepare`` generator methods::
+
+    def prepare(self, args):
+        (code, out, err) = yield self.local['bumpversion']['--list', args.part]
+
+        yield self.local['python']['setup.py', 'sdist', 'bdist_wheel']
+
+        if out is None:
+            version = 'DRY-RUN'
+        else:
+            (version_match,) = re.finditer(
+                r'^new_version=([\d.]+)$',
+                out,
+                re.M,
+            )
+            version = version_match.group(1)
+
+        yield self.local['twine']['upload', f'dist/*{version}*']
+
+In the above, ``prepare`` stores the results of ``bumpversion`` execution, in order to determine from its standard output the version to be released.
+
 Command invocation signature
 ----------------------------
 
@@ -580,5 +634,6 @@ To ensure that such a friendly – and *relatively* high-level – project requi
 .. _Homebrew: https://brew.sh/
 .. _pyenv: https://github.com/pyenv/pyenv
 .. _pyenv installer: https://github.com/pyenv/pyenv-installer#installation--update--uninstallation
+.. _plumbum: https://plumbum.readthedocs.io/en/latest/local_commands.html#exit-codes
 .. _Dickens: https://github.com/dssg/dickens
 .. _install-cli: https://github.com/dssg/install-cli

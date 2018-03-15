@@ -369,6 +369,8 @@ class Local(Command):
 
     local = CacheDict(plumbum.local.__getitem__)
 
+    run_kws = frozenset(('retcode',))
+
     @classmethod
     def base_parser(cls):
         parser = super().base_parser()
@@ -414,20 +416,37 @@ class Local(Command):
         if isinstance(commands, plumbum.commands.BaseCommand):
             commands = (commands,)
 
+        send = hasattr(commands, 'send')
+        run_kwargs = {key: value for (key, value) in vars(self.prepare).items()
+                      if key in self.run_kws}
+
         if args.show_commands is None:
             show_commands = not args.execute_commands
         else:
             show_commands = args.show_commands
 
-        for command in commands:
+        result = None
+        iterator = iter(commands)
+
+        while True:
+            try:
+                if send and result is not None:
+                    command = iterator.send(result)
+                else:
+                    command = next(iterator)
+            except StopIteration:
+                break
+
             if show_commands:
                 print('>', command)
 
             if args.execute_commands:
                 if args.foreground:
-                    command & plumbum.FG
+                    result = command & plumbum.TEE(**run_kwargs)
                 else:
-                    command()
+                    result = command.run(**run_kwargs)
+            else:
+                result = (None, None, None)
 
     def prepare(self, args):
         super().__call__(args)
