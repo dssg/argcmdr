@@ -21,8 +21,9 @@ setup(
     long_description=README_PATH.read_text(),
     author="Center for Data Science and Public Policy",
     author_email='datascifellows@gmail.com',
+    license='MIT',
     classifiers=[
-        'Development Status :: 2 - Pre-Alpha',
+        'Development Status :: 4 - Beta',
         'Intended Audience :: Developers',
         'Natural Language :: English',
         'Programming Language :: Python :: 3.6',
