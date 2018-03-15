@@ -3,6 +3,7 @@ import collections
 import importlib
 import importlib.util
 import inspect
+import os.path
 import re
 import sys
 
@@ -86,6 +87,16 @@ def execute():
     manager = None
 
     if not args.manage_file:
+        # when invoked through setuptools entry-point, the current working
+        # directory is not added to the python path; (rather, the directory
+        # containing the entry-point script is).
+        # this behavior is assumed to be counter-intuitive to users, who are
+        # by default attempting to load a command module there; so, we'll
+        # force this into the path:
+        # TODO: perhaps should append to path wherever we (expect to) find the
+        # module, (i.e. support manage-file path as well)
+        sys.path.append(os.path.abspath(os.path.curdir))
+
         try:
             manager = importlib.import_module('manage')
         except ImportError:
