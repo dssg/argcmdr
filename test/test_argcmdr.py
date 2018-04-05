@@ -350,5 +350,44 @@ class TestSendCommandResult(TryCommandTestCase):
         command.run.assert_called_once_with()
 
 
+class TestThrowCommandException(TryCommandTestCase):
+
+    def test_throw(self):
+        class CarefulCommand(Local):
+
+            def prepare(self_, args):
+                # don't clutter test output
+                args.foreground = False
+
+                with self.assertRaises(self_.local.ProcessExecutionError):
+                    yield self_.local['which']['TOTAL-FAKE']
+
+        self.try_command(CarefulCommand)
+
+    def test_naive(self):
+        class NaiveCommand(Local):
+
+            def prepare(self_, args):
+                # don't clutter test output
+                args.foreground = False
+
+                yield self_.local['which']['TOTAL-FAKE']
+
+        with self.assertRaises(NaiveCommand.local.ProcessExecutionError):
+            self.try_command(NaiveCommand)
+
+    def test_non_gen(self):
+        class SimpleCommand(Local):
+
+            def prepare(self_, args):
+                # don't clutter test output
+                args.foreground = False
+
+                return self_.local['which']['TOTAL-FAKE']
+
+        with self.assertRaises(SimpleCommand.local.ProcessExecutionError):
+            self.try_command(SimpleCommand)
+
+
 if __name__ == '__main__':
     unittest.main()

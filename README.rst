@@ -232,6 +232,15 @@ Having disabled execution exceptions – and regardless – we might need to be 
 
 In the above, ``prepare`` stores the results of ``bumpversion`` execution, in order to determine from its standard output the version to be released.
 
+Moreover, we might like to define special handling for execution errors; and, perhaps rather than manipulate ``retcode`` for all commands emitted by our method, we might like to handle them separately. As such, execution exceptions are also communicated back to ``prepare`` generators::
+
+    def prepare(self, args):
+        try:
+            (_code, out, _err) = yield self.local['bumpversion']['--list', args.part]
+        except self.local.ProcessExecutionError:
+            print("execution failed but here's a joke ...")
+            ...
+
 Command invocation signature
 ----------------------------
 
@@ -252,7 +261,7 @@ One easy way of printing friendly error messages is to make use of ``argparse.Ar
         def prepare(self, args, parser):
             try:
                 local_exec = self.local['ls']
-            except plumbum.CommandNotFound:
+            except self.local.CommandNotFound:
                 parser.error('command not available')
 
             yield local_exec[args.remainder]

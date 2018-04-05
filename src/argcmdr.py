@@ -369,6 +369,10 @@ class Local(Command):
 
     local = CacheDict(plumbum.local.__getitem__)
 
+    # link common exceptions
+    local.ProcessExecutionError = plumbum.ProcessExecutionError
+    local.CommandNotFound = plumbum.CommandNotFound
+
     run_kws = frozenset(('retcode',))
 
     @classmethod
@@ -425,13 +429,15 @@ class Local(Command):
         else:
             show_commands = args.show_commands
 
-        result = None
+        result = thrown = None
         iterator = iter(commands)
 
         while True:
             try:
                 if send and result is not None:
                     command = iterator.send(result)
+                elif send and thrown is not None:
+                    command = iterator.throw(thrown)
                 else:
                     command = next(iterator)
             except StopIteration:
@@ -441,10 +447,19 @@ class Local(Command):
                 print('>', command)
 
             if args.execute_commands:
-                if args.foreground:
-                    result = command & plumbum.TEE(**run_kwargs)
+                try:
+                    if args.foreground:
+                        result = command & plumbum.TEE(**run_kwargs)
+                    else:
+                        result = command.run(**run_kwargs)
+                except Exception as exc:
+                    if not send:
+                        raise
+
+                    result = None
+                    thrown = exc
                 else:
-                    result = command.run(**run_kwargs)
+                    thrown = None
             else:
                 result = (None, None, None)
 
