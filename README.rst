@@ -211,7 +211,7 @@ In some cases, however, we might like to disable this functionality, and proceed
 
 Subprocess commands emitted by the above method will not raise execution exceptions, regardless of their exit code. (To allow only certain exit code(s), set ``retcode`` as appropriate – see plumbum_.)
 
-Having disabled execution exceptions – and regardless – we might need to be able to inspect a subprocess command's exit code, standard output or standard error. As such, (whether we manipulate ``retcode`` or not), ``argcmdr`` communicates these command results with ``prepare`` generator methods::
+Having disabled execution exceptions – and regardless – we might need to inspect a subprocess command's exit code, standard output or standard error. As such, (whether we manipulate ``retcode`` or not), ``argcmdr`` communicates these command results with ``prepare`` generator methods::
 
     def prepare(self, args):
         (code, out, err) = yield self.local['bumpversion']['--list', args.part]
