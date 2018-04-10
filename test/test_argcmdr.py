@@ -1,10 +1,11 @@
 import argparse
 import io
+import types
 import unittest
 from unittest import mock
 
 from argcmdr import *
-from argcmdr import exhaust_iterable
+from argcmdr import CommandMethod, GeneratedCommand, exhaust_iterable
 
 
 class TryCommandTestCase(unittest.TestCase):
@@ -387,6 +388,82 @@ class TestThrowCommandException(TryCommandTestCase):
 
         with self.assertRaises(SimpleCommand.local.ProcessExecutionError):
             self.try_command(SimpleCommand)
+
+
+class TestCommandDecorator(unittest.TestCase):
+
+    @staticmethod
+    def command():
+        pass
+
+    def test_vanilla_cmd(self):
+        command = cmd(self.command)
+        self.assertIsNot(command, self.command)
+        self.assertIs(command.__call__, self.command)
+        self.assertTrue(issubclass(command, GeneratedCommand))
+        self.assertTrue(issubclass(command, Command))
+        self.assertEqual(command._args_, [])
+        self.assertIs(command(None).__call__, self.command)
+
+    def test_parsing_cmd(self):
+        parser_args0 = ('-1',)
+        parser_kwargs0 = {
+            'action': 'store_const',
+            'const': '\n',
+            'default': ' ',
+            'dest': 'sep',
+            'help': 'list one file per line',
+        }
+        parser_args1 = ('-h', '--human-readable')
+        parser_kwargs1 = {
+            'action': 'store_true',
+            'dest': 'human',
+            'help': 'print human readable sizes (e.g., 1K 234M 2G)',
+        }
+
+        command = cmd(*parser_args0, **parser_kwargs0)(
+                  cmd(*parser_args1, **parser_kwargs1)(
+                  self.command))
+        self.assertIsNot(command, self.command)
+        self.assertIs(command.__call__, self.command)
+        self.assertTrue(issubclass(command, GeneratedCommand))
+        self.assertTrue(issubclass(command, Command))
+        self.assertEqual(command._args_, [(parser_args1, parser_kwargs1),
+                                          (parser_args0, parser_kwargs0)])
+
+        parser = mock.Mock()
+        instance = command(parser)
+        self.assertEqual(parser.add_argument.call_count, 2)
+        parser.add_argument.assert_has_calls([(parser_args1, parser_kwargs1),
+                                              (parser_args0, parser_kwargs0)])
+        self.assertIs(instance.__call__, self.command)
+
+    def test_local_cmd(self):
+        command = local(self.command)
+        self.assertIsNot(command, self.command)
+        self.assertIs(command.prepare, self.command)
+        self.assertTrue(issubclass(command, GeneratedCommand))
+        self.assertTrue(issubclass(command, Local))
+        self.assertEqual(command._args_, [])
+
+        instance = command(None)
+        self.assertIsInstance(instance.prepare, types.MethodType)
+        self.assertIs(instance.prepare.__func__, self.command)
+
+    def test_local_method(self):
+        command = localmethod(self.command)
+        self.assertIsNot(command, self.command)
+        self.assertIsInstance(command.prepare, CommandMethod)
+        self.assertIs(command.prepare.__func__, self.command)
+        self.assertTrue(issubclass(command, GeneratedCommand))
+        self.assertTrue(issubclass(command, Local))
+        self.assertEqual(command._args_, [])
+
+        instance = command(None)
+        instance.__getitem__ = mock.Mock()
+        self.assertIsInstance(instance.prepare, types.MethodType)
+        self.assertIs(instance.prepare.__func__, self.command)
+        instance.__getitem__.assert_has_calls(2 * [mock.call((-1,))])
 
 
 if __name__ == '__main__':

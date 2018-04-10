@@ -1,5 +1,7 @@
 import argparse
 import collections
+import enum
+import functools
 import importlib
 import importlib.util
 import inspect
@@ -15,6 +17,10 @@ from plumbum import colors
 __version__ = '0.3.0'
 
 __all__ = (
+    'cmd',
+    'cmdmethod',
+    'local',
+    'localmethod',
     'main',
     'entrypoint',
     'Command',
@@ -471,7 +477,210 @@ class LocalRoot(Local, RootCommand):
     pass
 
 
+#                                   #
+# command manufacture via decorator #
+#                                   #
+
+unset = object()
+
+
+class GeneratedCommand:
+    """Mix-in for manufactured commands."""
+
+    def __init__(self, parser):
+        super().__init__(parser)
+
+        for (args, kwargs) in self._args_:
+            parser.add_argument(*args, **kwargs)
+
+
+class CommandMethod:
+    """Decorating descriptor producing a command functionality method
+    which receives as its first argument its parent command instance.
+
+    """
+    def __init__(self, func):
+        self.__func__ = func
+
+    def __get__(self, instance, cls=None):
+        if instance is None:
+            return self
+
+        parent = instance[-1]
+        return self.__func__.__get__(parent)
+
+
+class WrappedCallable:
+    """Wrapper allowing standard functions to be specified as class
+    attributes which will not bind as methods.
+
+    This wrapper hides functions' descriptor interface, such that, for
+    example, functions intended as ``Enum`` values are not treated as
+    methods (and thereby ignored as values).
+
+    """
+    def __init__(self, func):
+        # Copy over useful, identifying attributes
+        # But, disable attributes to copy by "update", which includes
+        # __dict__, and thereby copies everything we're trying to hide
+        functools.update_wrapper(self, func, updated=())
+
+    def __call__(self, *args, **kwargs):
+        return self.__wrapped__(*args, **kwargs)
+
+    def __repr__(self):
+        return f"{self.__class__.__name__}({self.__wrapped__!r})"
+
+
+c = WrappedCallable
+
+
+class CallableEnum(enum.Enum):
+    """Enum whose instances are callable and which invoke their values."""
+
+    def __call__(self, *args, **kwargs):
+        return self.value(*args, **kwargs)
+
+
+def noopl(x):
+    return x
+
+
+class CommandDecorator:
+    """Decorate a callable to replace it with a manufactured command
+    class.
+
+    The callable is supplied as the manufactured command's functionality
+    method, (*e.g.* either ``__call__`` or ``prepare``).
+
+    A CLI parser argument may be specified in the initialization phase
+    of the decorator instance, and/or through repeated decoration of
+    the manufactured command.
+
+    The manufactured command may be further customized through decorator
+    initialization keyword flags ``local`` and ``root``, or by explicit
+    specification of a custom base class.
+
+    The binding of the decorated callable to the command instance, (and
+    therefore the arguments it may expect to receive, such as ``self``),
+    is *static* by default. However, if it is a ``Local`` command, the
+    callable will instead receive its default binding, (*e.g.* as a
+    command instance method if the callable is a standard function). The
+    binding may be explicitly controlled by setting the ``binding``
+    keyword to either a Boolean value or to a ``Binding`` instance.
+
+    """
+    class Binding(CallableEnum):
+
+        default = c(noopl)
+        static = c(staticmethod)
+        parent = c(CommandMethod)
+
+    def __init__(self,
+                 *parser_args,
+                 base=unset,
+                 binding=unset,
+                 local=False,
+                 root=False,
+                 **parser_kwargs):
+        if (local or root) and base is not unset:
+            raise TypeError("cannot apply 'local' or 'root' functionality to "
+                            "arbitrary base")
+
+        if base is unset:
+            if local:
+                self.base = LocalRoot if root else Local
+            else:
+                self.base = RootCommand if root else Command
+        else:
+            self.base = base
+
+        if binding is unset:
+            if issubclass(self.base, Local):
+                self.binding = self.Binding.default
+            else:
+                self.binding = self.Binding.static
+        elif isinstance(binding, bool):
+            if binding:
+                self.binding = self.Binding.default
+            else:
+                self.binding = self.Binding.static
+        elif isinstance(binding, self.Binding):
+            self.binding = binding
+        else:
+            raise TypeError('binding must be either bool, Binding or unset')
+
+        self.args = (parser_args, parser_kwargs)
+
+    def __call__(self, target):
+        args = [self.args] if any(self.args) else []
+
+        if inspect.isclass(target):
+            if issubclass(target, GeneratedCommand):
+                target._args_.extend(args)
+                return target
+
+        elif callable(target):
+            call_name = 'prepare' if issubclass(self.base, Local) else '__call__'
+            call_target = self.binding(target)
+
+            return type(
+                target.__name__,
+                (GeneratedCommand, self.base),
+                {
+                    '_args_': args,
+                    '__doc__': target.__doc__,
+                    '__module__': target.__module__,
+                    call_name: call_target,
+                }
+            )
+
+        raise TypeError(f"unexpected command decoration target {target}")
+
+
+def cmd(*args, **kwargs):
+    """Decorate a callable to replace it with a manufactured command
+    class.
+
+    Extends the interface of ``CommandDecorator``, allowing the same
+    ``cmd`` to be used as a decorator or as a decorator factory::
+
+        @cmd(root=True)
+        def build():
+            ...
+
+        @build.register
+        @cmd
+        def deploy():
+            ...
+
+    Further enables composition of configuration, for example via
+    partials, as helpers.
+
+    """
+    try:
+        (first, *remainder) = args
+    except ValueError:
+        pass
+    else:
+        if callable(first):
+            return CommandDecorator(*remainder, **kwargs)(first)
+
+    return CommandDecorator(*args, **kwargs)
+
+
+local = functools.partial(cmd, local=True)
+
+cmdmethod = functools.partial(cmd, binding=CommandDecorator.Binding.parent)
+
+localmethod = functools.partial(local, binding=CommandDecorator.Binding.parent)
+
+
 def entrypoint(cls):
+    """Mark the decorated command as the intended entrypoint of the
+    command module.
+
+    """
     if not isinstance(cls, type) or not issubclass(cls, Command):
         raise TypeError(f"inappropriate entrypoint instance of type {cls.__class__}")
     cls._argcmdr_entrypoint_ = True
