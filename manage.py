@@ -12,7 +12,7 @@ class Manage(Local):
         """run tests"""
 
         def prepare(self):
-            return self.local['tox']
+            return (self.local.FG, self.local['tox'])
 
     class Bump(Local):
         """bump package version (and optionally build and release)"""

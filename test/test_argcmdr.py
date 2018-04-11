@@ -1,8 +1,11 @@
 import argparse
 import io
+import subprocess
 import types
 import unittest
 from unittest import mock
+
+import plumbum.commands
 
 from argcmdr import *
 from argcmdr import CommandMethod, GeneratedCommand, exhaust_iterable
@@ -464,6 +467,61 @@ class TestCommandDecorator(unittest.TestCase):
         self.assertIsInstance(instance.prepare, types.MethodType)
         self.assertIs(instance.prepare.__func__, self.command)
         instance.__getitem__.assert_has_calls(2 * [mock.call((-1,))])
+
+
+class TestLocalModifier(TryCommandTestCase):
+
+    def test_single_default(self):
+        process = mock.Mock()
+        manager = mock.MagicMock()
+        command = mock.Mock(spec=Local.local['which']['python'])
+        command.bgrun.return_value = manager
+        manager.__enter__.return_value = process
+
+        class SimpleCommand(Local):
+
+            def prepare(_self):
+                return command
+
+        self.try_command(SimpleCommand)
+        command.bgrun.assert_called_once_with(
+            retcode=0,
+            stdin=None,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            timeout=None,
+        )
+        process.poll.assert_called_once_with()
+
+    def test_single_foreground(self):
+        command = mock.Mock(spec=Local.local['which']['python'])
+
+        class SimpleCommand(Local):
+
+            def prepare(self_):
+                return (self_.local.FG, command)
+
+        self.try_command(SimpleCommand)
+        command.assert_called_once_with(
+            retcode=0,
+            stderr=None,
+            stdin=None,
+            stdout=None,
+            timeout=None,
+        )
+
+    def test_generator_background(self):
+        command = mock.Mock(spec=Local.local['which']['python'])
+
+        class SimpleCommand(Local):
+
+            def prepare(self_):
+                result = yield (self_.local.BG, command)
+                self.assertIsInstance(result, plumbum.commands.Future)
+                self.assertIs(result.proc, command.popen.return_value)
+
+        self.try_command(SimpleCommand)
+        command.popen.assert_called_once_with()
 
 
 if __name__ == '__main__':

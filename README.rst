@@ -209,8 +209,11 @@ Via the ``prepare`` interface, standard output is printed by default, and your c
 
 To execute multiple local subprocesses, ``prepare`` may either return an iterable (*e.g.* ``list``) of the above ``plumbum`` bound commands, or ``prepare`` may be defined as a generator function, (*i.e.* make repeated use of ``yield`` – see below).
 
-Inspecting execution
-~~~~~~~~~~~~~~~~~~~~
+Managing execution
+~~~~~~~~~~~~~~~~~~
+
+Handling exit codes
++++++++++++++++++++
 
 Subprocess commands emitted by ``Local.prepare`` are executed in order and, by default, failed execution is interrupted by a raised exception::
 
@@ -242,6 +245,9 @@ In some cases, however, we might like to disable this functionality, and proceed
 
 Subprocess commands emitted by the above method will not raise execution exceptions, regardless of their exit code. (To allow only certain exit code(s), set ``retcode`` as appropriate – see plumbum_.)
 
+Inspecting results
+++++++++++++++++++
+
 Having disabled execution exceptions – and regardless – we might need to inspect a subprocess command's exit code, standard output or standard error. As such, (whether we manipulate ``retcode`` or not), ``argcmdr`` communicates these command results with ``prepare`` generator methods::
 
     def prepare(self, args):
@@ -263,6 +269,9 @@ Having disabled execution exceptions – and regardless – we might need to ins
 
 In the above, ``prepare`` stores the results of ``bumpversion`` execution, in order to determine from its standard output the version to be released.
 
+Handling exceptions
++++++++++++++++++++
+
 Moreover, we might like to define special handling for execution errors; and, perhaps rather than manipulate ``retcode`` for all commands emitted by our method, we might like to handle them separately. As such, execution exceptions are also communicated back to ``prepare`` generators::
 
     def prepare(self, args):
@@ -271,6 +280,21 @@ Moreover, we might like to define special handling for execution errors; and, pe
         except self.local.ProcessExecutionError:
             print("execution failed but here's a joke ...")
             ...
+
+Modifying execution
++++++++++++++++++++
+
+Commands are run in the foreground by default, their outputs printed, as well as recorded for inspection, via the ``plumbum`` modifier, ``TEE``.
+
+To execute a command in the background (and continue), we may specify the ``BG`` modifier::
+
+    def prepare(self, args):
+        future = yield (self.local.BG, self.local['bumpversion']['--list', args.part])
+
+Alternatively, we may wish to execute a command in the foreground *only*, (and not record its output) – *e.g.* to best support processes which require TTY::
+
+    def prepare(self):
+        return (self.local.FG, self.local['ipython']['-i', 'startup.py'])
 
 The local decorator
 ~~~~~~~~~~~~~~~~~~~
