@@ -379,7 +379,13 @@ class Local(Command):
     local.ProcessExecutionError = plumbum.ProcessExecutionError
     local.CommandNotFound = plumbum.CommandNotFound
 
+    # ...and modifiers
+    local.BG = plumbum.BG
+    local.FG = plumbum.FG
+    local.TEE = plumbum.TEE
+
     run_kws = frozenset(('retcode',))
+    run_modifiers = frozenset((plumbum.BG, plumbum.FG, plumbum.TEE))
 
     @classmethod
     def base_parser(cls):
@@ -423,7 +429,11 @@ class Local(Command):
         if commands is None:
             return
 
-        if isinstance(commands, plumbum.commands.BaseCommand):
+        if isinstance(commands, plumbum.commands.BaseCommand) or (
+            isinstance(commands, (tuple, list)) and
+            len(commands) == 2 and
+            commands[0] in self.run_modifiers
+        ):
             commands = (commands,)
 
         send = hasattr(commands, 'send')
@@ -436,6 +446,7 @@ class Local(Command):
             show_commands = args.show_commands
 
         result = thrown = None
+        empty_result = (None, None, None)
         iterator = iter(commands)
 
         while True:
@@ -449,12 +460,21 @@ class Local(Command):
             except StopIteration:
                 break
 
+            if isinstance(command, (tuple, list)):
+                (modifier, command) = command
+            else:
+                modifier = None
+
             if show_commands:
                 print('>', command)
 
             if args.execute_commands:
                 try:
-                    if args.foreground:
+                    if modifier is not None:
+                        result = command & modifier(**run_kwargs)
+                        if result is None:
+                            result = empty_result
+                    elif args.foreground:
                         result = command & plumbum.TEE(**run_kwargs)
                     else:
                         result = command.run(**run_kwargs)
@@ -467,7 +487,7 @@ class Local(Command):
                 else:
                     thrown = None
             else:
-                result = (None, None, None)
+                result = empty_result
 
     def prepare(self, args):
         super().__call__(args)
