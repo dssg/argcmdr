@@ -864,7 +864,7 @@ Shell completion
 
 ``argcmdr`` supports shell command argument completion via ``argcomplete`` (see argcomplete_).
 
-As explained by its documentation, your user may enable argument completion, either:
+As explained by its documentation, your user (perhaps in executing the installation of your command), may enable argument completion, either:
 
 * specifically for your shell command
 * or generally for any script containing the string **PYTHON_ARGCOMPLETE_OK** in its first 1024 bytes
