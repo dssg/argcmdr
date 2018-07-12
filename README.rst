@@ -859,6 +859,39 @@ Bootstrapping
 
 To ensure that such a friendly – and *relatively* high-level – project requirement as ``argcmdr`` is satisfied, consider the expressly low-level utility install-cli_, with which to guide contributors through the process of provisioning your project's most basic requirements.
 
+Shell completion
+----------------
+
+``argcmdr`` supports shell command argument completion via ``argcomplete`` (see argcomplete_).
+
+As explained by its documentation, your user may enable argument completion, either:
+
+* specifically for your shell command
+* or generally for any script containing the string **PYTHON_ARGCOMPLETE_OK** in its first 1024 bytes
+
+For flexibility, (and, *e.g.*, in support of installation into virtual environments, or otherwise where system- or user-global installation is undesirable or impossible), ``argcmdr`` *does not* currently insist on a particular scheme to enable argument completion.
+
+Rather, for example, to enable argument completion system-wide, specifically for the ``manage`` command (provisioned by ``argcmdr``), you might execute the following from a Bash shell (as the root user)::
+
+    register-python-argcomplete --shell bash manage > /etc/bash_completion.d/python-argcomplete-manage.sh
+
+Alternatively, the same argument completion may be enabled, but only for the current user::
+
+    mkdir -p ~/.bash_completion.d
+    register-python-argcomplete --shell bash manage > ~/.bash_completion.d/python-argcomplete-manage.sh
+
+Only in the latter case, the user must have the file ``~/.bash_completion``, including contents of the following form::
+
+    if [ -d ~/.bash_completion.d/ ] && [ ! -z "$(ls ~/.bash_completion.d/)" ]; then
+      for bcfile in ~/.bash_completion.d/*; do
+        . "$bcfile"
+      done
+    fi
+
+(Bash will load this file automatically.)
+
+Having so enabled argument completion (for your command), in your shell, ``argcmdr`` will handle the rest.
+
 .. _argparse: https://docs.python.org/3/library/argparse.html
 .. _python.org: https://www.python.org/downloads/
 .. _Homebrew: https://brew.sh/
@@ -867,3 +900,4 @@ To ensure that such a friendly – and *relatively* high-level – project requi
 .. _plumbum: https://plumbum.readthedocs.io/en/latest/local_commands.html#exit-codes
 .. _Dickens: https://github.com/dssg/dickens
 .. _install-cli: https://github.com/dssg/install-cli
+.. _argcomplete: https://argcomplete.readthedocs.io/

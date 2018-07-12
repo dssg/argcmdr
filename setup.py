@@ -33,6 +33,7 @@ setup(
     package_dir={'': SRC_DIR},
     py_modules=[MODULE],
     install_requires=[
+        'argcomplete==1.9.4',
         'Dickens==1.0.1',
         'plumbum==1.6.4',
     ],
