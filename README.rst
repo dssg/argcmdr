@@ -890,7 +890,11 @@ Only in the latter case, the user must have the file ``~/.bash_completion``, inc
 
 (Bash will load this file automatically.)
 
-Having so enabled argument completion (for your command), in your shell, ``argcmdr`` will handle the rest.
+In the case that neither system-wide nor user-only installation is appropriate, the same argument completion may be enabled, but only for the current shell::
+
+    eval "$(register-python-argcomplete --shell bash manage)"
+
+Regardless of the method, having so enabled argument completion (for your command), in your shell, ``argcmdr`` will handle the rest, generating completion suggestions based on your command definition.
 
 .. _argparse: https://docs.python.org/3/library/argparse.html
 .. _python.org: https://www.python.org/downloads/
