@@ -6,6 +6,8 @@ import functools
 import importlib
 import importlib.util
 import inspect
+import os.path
+import pkgutil
 import re
 import sys
 
@@ -24,6 +26,7 @@ __all__ = (
     'localmethod',
     'main',
     'entrypoint',
+    'init_package',
     'Command',
     'RootCommand',
     'Local',
@@ -85,14 +88,46 @@ def add_manage_file(parser):
     )
 
 
-def execute():
+MANAGE_FILE_PATHS = (
+    os.path.join('manage', '__init__.py'),
+    'manage.py',
+)
+
+
+def init_package(path=None, name='manage'):
+    """Initialize (import) the submodules, and recursively the
+    subpackages, of a "manage" package at ``path``.
+
+    ``path`` may be specified as either a system directory path or a
+    list of these.
+
+    If ``path`` is unspecified, it is inferred from the already-imported
+    "manage" top-level module.
+
+    """
+    if path is None:
+        manager = sys.modules[name]
+        init_package(manager.__path__, name)
+        return
+
+    if isinstance(path, str):
+        init_package([path], name)
+        return
+
+    for module_info in pkgutil.walk_packages(path, f'{name}.'):
+        if not module_info.ispkg:
+            importlib.import_module(module_info.name)
+
+
+def execute(argv=None):
     parser = argparse.ArgumentParser(add_help=False)
     add_manage_file(parser)
-    (args, _remainder) = parser.parse_known_args()
+    (args, _remainder) = parser.parse_known_args(argv)
 
-    # import manage.py
+    # import manage.py / manage package
     manager = None
 
+    # 1) NBD, already on the python-path
     if not args.manage_file:
         try:
             manager = importlib.import_module('manage')
@@ -102,11 +137,29 @@ def execute():
     if not manager:
         # CWD may not be in PYTHONPATH (and that's OK);
         # or, may have specified alternative location
-        file_path = args.manage_file or 'manage.py'
+        if args.manage_file:
+            # 2) alternative location specified
+            if os.path.isdir(args.manage_file):
+                file_path = os.path.join(args.manage_file, '__init__.py')
+            else:
+                file_path = args.manage_file
+        else:
+            # 3) we'll try the usual suspects
+            # Note: *could* raise the error here, in a for/else block
+            for file_path in MANAGE_FILE_PATHS:
+                if os.path.isfile(file_path):
+                    break
+
         spec = importlib.util.spec_from_file_location('manage', file_path)
         manager = importlib.util.module_from_spec(spec)
+
+        # in case we're loading a package (with internal references)
+        sys.modules['manage'] = manager
+
+        # prevent __pycache__ clutter
         dont_write_bytecode = sys.dont_write_bytecode
         sys.dont_write_bytecode = True
+
         try:
             spec.loader.exec_module(manager)
         except FileNotFoundError:
@@ -122,6 +175,12 @@ def execute():
             sys.exit(1)
         finally:
             sys.dont_write_bytecode = dont_write_bytecode
+
+    # auto-init manage package's submodules and subpackages
+    auto_init_package = getattr(manager, '__auto_init_package__', True)
+    submodule_search_locations = getattr(manager, '__path__', None)
+    if auto_init_package and submodule_search_locations is not None:
+        init_package(submodule_search_locations)
 
     # determine entrypoint
     for command_filter in (
@@ -142,7 +201,7 @@ def execute():
             next(candidates)
         except StopIteration:
             # only one match. run it!
-            main(entrypoint, extend_parser=add_manage_file)
+            main(entrypoint, argv=argv, extend_parser=add_manage_file)
             return
 
         print("multiple entrypoints found" | colors.red,

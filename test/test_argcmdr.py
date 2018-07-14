@@ -1,14 +1,29 @@
 import argparse
 import io
+import os
+import pdb
 import subprocess
 import types
 import unittest
+import sys
+import traceback
 from unittest import mock
 
 import plumbum.commands
 
+import argcmdr
 from argcmdr import *
 from argcmdr import CommandMethod, GeneratedCommand, exhaust_iterable
+
+
+TEST_DIR = os.path.dirname(__file__)
+DATA_DIR = os.path.join(TEST_DIR, 'data')
+
+
+def pm():
+    info = sys.exc_info()
+    traceback.print_exception(*info)
+    pdb.post_mortem(info[2])
 
 
 class TryCommandTestCase(unittest.TestCase):
@@ -522,6 +537,111 @@ class TestLocalModifier(TryCommandTestCase):
 
         self.try_command(SimpleCommand)
         command.popen.assert_called_once_with()
+
+
+class TryExecuteTestCase(unittest.TestCase):
+
+    test_target = None
+
+    @classmethod
+    def declare_success(cls):
+        cls.test_target = 'SUCCESS'
+
+    @classmethod
+    def clear_success(cls):
+        cls.test_target = None
+
+    def tearDown(self):
+        try:
+            del sys.modules['manage']
+        except KeyError:
+            pass
+
+        self.clear_success()
+
+    def try_execute(self, argv=None):
+        if argv is None:
+            argv = []
+
+        argv.append(self.__class__.__name__)
+
+        try:
+            argcmdr.execute(argv=argv)
+        except SystemExit as exc:
+            self.fail(exc)
+
+
+class TestExecutePath(TryExecuteTestCase):
+
+    def test_module(self):
+        self.try_execute([
+            '--manage-file', os.path.join(DATA_DIR, 'execute_1', 'manage.py'),
+        ])
+        self.assertEqual(self.test_target, 'SUCCESS')
+
+    def test_package(self):
+        self.try_execute([
+            '--manage-file', os.path.join(DATA_DIR, 'execute_2', 'manage'),
+            'subcommand',
+        ])
+        self.assertEqual(self.test_target, 'SUCCESS')
+
+
+class TryExecuteCwdTestCase(TryExecuteTestCase):
+
+    sample_path = None
+
+    def setUp(self):
+        self.cwd0 = os.getcwd()
+        os.chdir(self.sample_path)
+
+        # CWD is usually *not* on PYTHONPATH
+        self.cwd_path_index = sys.path.index('')
+        sys.path.remove('')
+
+    def tearDown(self):
+        os.chdir(self.cwd0)
+
+        if sys.path[self.cwd_path_index] != '':
+            sys.path.insert(self.cwd_path_index, '')
+
+        super().tearDown()
+
+
+class TestExecuteFile(TryExecuteCwdTestCase):
+
+    sample_path = os.path.join(DATA_DIR, 'execute_1')
+
+    def test_on_pythonpath(self):
+        sys.path.insert(self.cwd_path_index, '')
+
+        self.try_execute()
+        self.assertEqual(self.test_target, 'SUCCESS')
+
+    def test_not_on_pythonpath(self):
+        with self.assertRaises(ImportError):
+            import manage
+
+        self.try_execute()
+        self.assertEqual(self.test_target, 'SUCCESS')
+
+
+class TestExecutePackage(TryExecuteCwdTestCase):
+
+    sample_path = os.path.join(DATA_DIR, 'execute_2')
+
+    def test_on_pythonpath(self):
+        sys.path.insert(self.cwd_path_index, '')
+
+        self.try_execute(['subcommand'])
+        self.assertEqual(self.test_target, 'SUCCESS')
+
+    def test_not_on_pythonpath(self):
+        with self.assertRaises(ImportError):
+            import manage
+
+        self.try_execute(['subcommand'])
+        self.assertEqual(self.test_target, 'SUCCESS')
 
 
 if __name__ == '__main__':

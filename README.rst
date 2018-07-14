@@ -854,6 +854,63 @@ Note, however, that only commands declared at the module, or "top" level, are co
 
 Presented with a module containing only the above commands, ``argcmdr`` would identify ``CommandEhh`` as the entrypoint; ``CommandBeh`` would never be considered, even if decorated ``@entrypoint``.
 
+The management package
+~~~~~~~~~~~~~~~~~~~~~~
+
+Python *packages*, no less than stand-alone modules, may also be defined for use with the ``manage`` command, to aid in maintenance and development.
+
+Consider the following example directory layout::
+
+    manage/
+    ├── __init__.py
+    ├── cloud.py
+    ├── db.py
+    ├── main.py
+    ├── morale.py
+    ├── server.py
+    └── util.py
+
+``argcmdr`` will load the above top-level Python module, ``manage``, just as well as it would the ``manage`` module defined by a ``manage.py`` file, (whether these are available on the ``PYTHONPATH`` or not).
+
+Furthermore, detecting that *this* ``manage`` is in fact a package, ``argcmdr`` will *automatically* and *recursively* load all of the modules this package contains.
+
+This allows the developer to provide ``argcmdr`` the minimum that it requires at ``manage/__init__.py`` – access to an interface entrypoint, *i.e.* the base ``Command`` – and to organize the development of that interface in whatever maintainable way suits them.
+
+To wit, the developer simply might write, in ``manage/__init__.py``::
+
+    from .main import Main  # noqa
+
+(…And they will have no need of the ``@entrypoint`` decorator, as ``argcmdr`` will only see the one top-level command.)
+
+Of course, that top-level command might have been defined in ``__init__.py``, or as you might prefer, in ``manage/main.py``::
+
+    from argcmdr import RootCommand
+
+    class Main(RootCommand):
+        """your one-stop shop for devops"""
+
+        ...
+
+And, each subcommand may be defined in a submodule, such as ``manage/cloud.py``::
+
+    from argcmdr import Command
+
+    from .main import Main
+
+    @Main.register
+    class Cloud(Command):
+        """manage cloud computing resources"""
+
+        ...
+
+Thanks to automatic loading, the ``Cloud`` subcommand, (which will resolve to ``manage cloud``), will be picked up, without additional boilerplate and without needing to consider circular imports.
+
+To disable automatic submodule loading, set the following in ``manage/__init__.py``::
+
+    __auto_init_package__ = False
+
+And to make (custom) use of this feature, see: ``argcmdr.init_package()``.
+
 Bootstrapping
 ~~~~~~~~~~~~~
 
