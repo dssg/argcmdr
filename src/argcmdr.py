@@ -1,3 +1,4 @@
+import argcomplete
 import argparse
 import collections
 import enum
@@ -60,6 +61,7 @@ def main(command_class,
         check_version(minimum_version)
         (parser, args) = command_class.get_parser()
         extend_parser(parser)
+        argcomplete.autocomplete(parser)
         parser.parse_args(argv, args)
         command = args.__command__
         command.call(args)
