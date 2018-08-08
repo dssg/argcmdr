@@ -484,6 +484,19 @@ class Local(Command):
         )
         return parser
 
+    def print_command(self, command, force=False):
+        if force or self.args.show_commands or (
+            self.args.show_commands is None and
+            not self.args.execute_commands
+        ):
+            # Due to plumbum issue #398 we can't do this:
+            #
+            # print('>', colors['#5FAF5F'] | str(command))
+            #
+            # whenever the command has been supplied stdin.
+            formulation = ' '.join(map(str, command.formulate()))
+            print('>', colors['#5FAF5F'] | formulation)
+
     def __call__(self, args):
         commands = self.call(args, 'prepare')
 
@@ -500,11 +513,6 @@ class Local(Command):
         send = hasattr(commands, 'send')
         run_kwargs = {key: value for (key, value) in vars(self.prepare).items()
                       if key in self.run_kws}
-
-        if args.show_commands is None:
-            show_commands = not args.execute_commands
-        else:
-            show_commands = args.show_commands
 
         result = thrown = None
         empty_result = (None, None, None)
@@ -526,8 +534,7 @@ class Local(Command):
             else:
                 modifier = None
 
-            if show_commands:
-                print('>', command)
+            self.print_command(command)
 
             if args.execute_commands:
                 try:
