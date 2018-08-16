@@ -2,6 +2,7 @@ import argparse
 import io
 import os
 import pdb
+import re
 import subprocess
 import types
 import unittest
@@ -16,6 +17,8 @@ import argcmdr
 from argcmdr import *
 from argcmdr import CommandMethod, GeneratedCommand, exhaust_iterable
 
+
+ANSI_ESCAPE = re.compile(r'\x1B\[[0-?]*[ -/]*[@-~]')
 
 TEST_DIR = os.path.dirname(__file__)
 DATA_DIR = os.path.join(TEST_DIR, 'data')
@@ -112,6 +115,49 @@ class TestCommandGetItem(unittest.TestCase):
     def test_bad_index(self):
         with self.assertRaises(ValueError):
             self.root[0]
+
+
+class TestCommandDelegation(unittest.TestCase):
+
+    def test_child(self):
+        class Root(RootCommand):
+
+            def __init__(self_, parser):
+                parser.add_argument(
+                    '--no-eat',
+                    action='store_false',
+                    default=True,
+                    dest='should_eat',
+                )
+
+            def __call__(self_, args):
+                self.assertTrue(args.should_eat)
+                self.assertFalse(hasattr(args, 'this_food'))
+
+                # This would fail!
+                # (forcing Child to handle missing 'this_food')
+                # self_['child'](args)
+                #
+                # This won't ;)
+                self_['child'].delegate()
+
+        @Root.register
+        class Child(Command):
+
+            def __init__(self_, parser):
+                parser.add_argument(
+                    '--food',
+                    default='snacks',
+                    dest='this_food',
+                )
+
+            def __call__(self_, args):
+                self.assertTrue(args.should_eat)
+                self.assertEqual(args.this_food, 'snacks')
+
+        (parser, args) = Root.get_parser()
+        parser.parse_args([], args)
+        args.__command__._call_()
 
 
 class TestCommandRoot(unittest.TestCase):
@@ -233,10 +279,23 @@ class TestPrepareCallSignature(TryCommandTestCase):
 
         self.try_command(Deep)
 
+    def test_local(self):
+        class DeepLocal(Local):
+
+            def prepare(self_, args, parser, local):
+                self.assertIsInstance(self_, DeepLocal)
+                self.assertIsInstance(args, argparse.Namespace)
+                self.assertIs(args.__command__, self_)
+                self.assertIs(args.__parser__, self.parser)
+                self.assertIs(parser, self.parser)
+                self.assertIs(local, self_.local)
+
+        self.try_command(DeepLocal)
+
     def test_fancy(self):
         class Fancy(Local):
 
-            def prepare(self_, args, parser, lang='en'):
+            def prepare(self_, args, parser, local, lang='en'):
                 self.assertIsInstance(self_, Fancy)
                 self.assertIsInstance(args, argparse.Namespace)
                 self.assertIs(args.__command__, self_)
@@ -257,7 +316,7 @@ class TestPrepareCallSignature(TryCommandTestCase):
     def test_bad(self):
         class Bad(Local):
 
-            def prepare(self_, args, parser, lang):
+            def prepare(self_, args, parser, local, lang):
                 self.fail("how did this happen?")
 
         with self.assertRaises(TypeError) as context:
@@ -271,7 +330,7 @@ class TestPrepareCallSignature(TryCommandTestCase):
     def test_tricky(self):
         class Tricky(Local):
 
-            def prepare(self_, args, parser=None, lang='en'):
+            def prepare(self_, args, parser=None, local=None, lang='en'):
                 self.assertIsInstance(self_, Tricky)
                 self.assertIsInstance(args, argparse.Namespace)
                 self.assertIs(args.__command__, self_)
@@ -351,7 +410,14 @@ class TestSendCommandResult(TryCommandTestCase):
                 self.assertIsNone(std)
                 self.assertIsNone(err)
 
-        self.try_command(SmartCommand)
+        with mock.patch('sys.stdout', new=io.StringIO()) as output:
+            self.try_command(SmartCommand)
+
+        plain_output = ANSI_ESCAPE.sub('', output.getvalue())
+        self.assertEqual(plain_output,
+            '> /usr/bin/which python\n'
+            '> /usr/bin/which TOTAL-FAKE\n'
+        )
 
     def test_non_gen(self):
         command = mock.Mock(spec=Local.local['which']['python'])

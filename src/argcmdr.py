@@ -2,6 +2,7 @@ import argcomplete
 import argparse
 import collections
 import collections.abc
+import copy
 import enum
 import functools
 import importlib
@@ -14,7 +15,7 @@ import sys
 
 import plumbum
 import plumbum.commands
-from descriptors import classproperty
+from descriptors import cachedproperty, classproperty
 from plumbum import colors
 
 
@@ -68,7 +69,7 @@ def main(command_class,
         argcomplete.autocomplete(parser)
         parser.parse_args(argv, args)
         command = args.__command__
-        command.call(args)
+        command._call_()
     except Exception as exc:
         if args is None or getattr(args, 'traceback', True):
             raise
@@ -247,9 +248,11 @@ class Command:
     formatter_class = argparse.HelpFormatter
 
     def __init__(self, parser):
+        self.args = None
+        self._parser_ = None
+
         self.__children__ = None
         self.__parents__ = None
-        self._args = None
 
     def __call__(self, args):
         args.__parser__.print_usage()
@@ -288,13 +291,28 @@ class Command:
 
     @property
     def args(self):
-        if getattr(self, '_args', None) is None:
-            raise RuntimeError('parsed argument namespace not available at this stage')
-        else:
-            return self._args
+        args = self.__dict__.get('args')
 
-    def call(self, args, target_name='__call__'):
-        call_args = (args, args.__parser__)
+        if args is None:
+            raise RuntimeError('parsed argument namespace not available at this stage')
+
+        return args
+
+    @args.setter
+    def args(self, namespace):
+        self.__dict__['args'] = namespace
+
+    @cachedproperty
+    def delegate_args(self):
+        args = copy.copy(self.args)
+        args.__parser__ = self._parser_
+        for action in self._parser_._actions:
+            args.__dict__.setdefault(action.dest, action.default)
+        return args
+
+    def _call_(self, *additional, base_args=None, target_name='__call__'):
+        base_args = (self.args, self.args.__parser__) if base_args is None else base_args
+        call_args = base_args + additional
         call_arg_count = len(call_args)
 
         target_callable = getattr(self, target_name)
@@ -311,6 +329,18 @@ class Command:
             )
 
         return target_callable(*call_args[:param_count])
+
+    def get_user_signature(self):
+        return ((), {})
+
+    def _user_call(self):
+        (call_args, call_kwargs) = self.get_user_signature()
+        return self._call_(*call_args, **call_kwargs)
+
+    def delegate(self):
+        (args, kwargs) = self.get_user_signature()
+        base_args = (self.delegate_args, self.delegate_args.__parser__)
+        return self._call_(*args, base_args=base_args, **kwargs)
 
     @classproperty
     def name(cls):
@@ -363,7 +393,8 @@ class Command:
         command = cls(parser)
         command.__parents__ = parents
         command.__children__ = {}
-        command._args = namespace
+        command.args = namespace
+        command._parser_ = parser
 
         if chain is not None:
             chain[cls.name] = command
@@ -530,8 +561,11 @@ class Local(Command):
             formulation = ' '.join(map(str, command.formulate()))
             print('>', colors['#5FAF5F'] | formulation)
 
+    def get_user_signature(self):
+        return ((self.local,), {'target_name': 'prepare'})
+
     def __call__(self, args):
-        commands = self.call(args, 'prepare')
+        commands = self._user_call()
 
         if commands is None:
             return
