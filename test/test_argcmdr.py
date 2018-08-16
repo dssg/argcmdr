@@ -287,6 +287,25 @@ class TestPrepareCallSignature(TryCommandTestCase):
         self.try_command(Tricky)
 
 
+class TestShowCommand():
+
+    def test_no_show(self):
+        assert 0
+
+    def test_requested_show(self):
+        assert 0
+
+    def test_dry_run_show(self):
+        assert 0
+
+    def test_dry_run_no_show(self):
+        assert 0
+
+    def test_issue_398(self):
+        """check that plumbum not fixed"""
+        assert 0
+
+
 class TestArgsProperty(TryMainTestCase):
 
     def test_identity(self):
