@@ -6,7 +6,7 @@ import functools
 import importlib
 import importlib.util
 import inspect
-import os.path
+import os
 import pkgutil
 import re
 import sys
@@ -773,3 +773,80 @@ def entrypoint(cls):
         raise TypeError(f"inappropriate entrypoint instance of type {cls.__class__}")
     cls._argcmdr_entrypoint_ = True
     return cls
+
+
+#                   #
+# Interface helpers #
+#                   #
+
+# TODO: convert to package and move these argparse helpers to submodule
+
+
+def store_env_override(option_strings,
+                       dest,
+                       envvar,
+                       nargs=None,
+                       default=None,
+                       type=None,
+                       choices=None,
+                       description=None,
+                       help=None,
+                       metavar=None):
+    """Construct an argparse action which stores the value of a command
+    line option to override a corresponding value in the process
+    environment.
+
+    If the environment variable is not empty, then no override is
+    required. If the environment variable is empty, and no default is
+    provided, then the "option" is required.
+
+    In the case of a default value which is a *transformation* of the
+    single environment variable, this default may be provided as a
+    callable, (*e.g.* as a lambda function).
+
+    Rather than have to fully explain the relationship of this
+    environment-backed option, help text may be generated from a
+    provided description.
+
+    """
+    if envvar == '':
+        raise ValueError("unsupported environment variable name", envvar)
+
+    envvalue = os.getenv(envvar)
+
+    if callable(default):
+        default_value = default(envvalue)
+    elif envvalue:
+        default_value = envvalue
+    else:
+        default_value = default
+
+    if description and help:
+        raise ValueError(
+            "only specify help to override its optional generation from "
+            "description -- not both"
+        )
+    elif description:
+        if default_value:
+            help = '{} (default {} envvar {}: {})'.format(
+                description,
+                'provided by' if default is None else 'derived from',
+                envvar,
+                default_value,
+            )
+        else:
+            help = (f'{description} (required because '
+                    f'envvar {envvar} is empty)')
+
+    return argparse._StoreAction(
+        option_strings=option_strings,
+        dest=dest,
+        nargs=nargs,
+        const=None,
+        default=default_value,
+        type=type,
+        choices=choices,
+        required=(not default_value),
+        help=help,
+        metavar=metavar,
+    )
