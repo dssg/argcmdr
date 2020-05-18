@@ -289,12 +289,20 @@ class Command:
         if self.__parents__:
             return self.__parents__[-1]
 
-    @property
-    def args(self):
+    def get_args(self):
         args = self.__dict__.get('args')
 
         if args is None:
             raise RuntimeError('parsed argument namespace not available at this stage')
+
+        return args
+
+    @property
+    def args(self):
+        args = self.get_args()
+
+        if args.__command__ is not self:
+            return self.delegate_args
 
         return args
 
@@ -304,14 +312,17 @@ class Command:
 
     @cachedproperty
     def delegate_args(self):
-        args = copy.copy(self.args)
+        args = copy.copy(self.get_args())
         args.__parser__ = self._parser_
         for action in self._parser_._actions:
             args.__dict__.setdefault(action.dest, action.default)
         return args
 
     def _call_(self, *additional, base_args=None, target_name='__call__'):
-        base_args = (self.args, self.args.__parser__) if base_args is None else base_args
+        if base_args is None:
+            nspace = self.get_args()
+            base_args = (nspace, nspace.__parser__)
+
         call_args = base_args + additional
         call_arg_count = len(call_args)
 

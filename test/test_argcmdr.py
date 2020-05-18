@@ -119,10 +119,10 @@ class TestCommandGetItem(unittest.TestCase):
 
 class TestCommandDelegation(unittest.TestCase):
 
-    def test_child(self):
+    def test_child(test):
         class Root(RootCommand):
 
-            def __init__(self_, parser):
+            def __init__(self, parser):
                 parser.add_argument(
                     '--no-eat',
                     action='store_false',
@@ -130,30 +130,45 @@ class TestCommandDelegation(unittest.TestCase):
                     dest='should_eat',
                 )
 
-            def __call__(self_, args):
-                self.assertTrue(args.should_eat)
-                self.assertFalse(hasattr(args, 'this_food'))
+            def __call__(self, args):
+                test.assertTrue(args.should_eat)
+                test.assertFalse(hasattr(args, 'this_food'))
 
                 # This would fail!
                 # (forcing Child to handle missing 'this_food')
-                # self_['child'](args)
+                # self['child'](args)
                 #
                 # This won't ;)
-                self_['child'].delegate()
+                self['child'].delegate()
 
         @Root.register
         class Child(Command):
 
-            def __init__(self_, parser):
+            def __init__(self, parser):
                 parser.add_argument(
                     '--food',
                     default='snacks',
                     dest='this_food',
                 )
 
-            def __call__(self_, args):
-                self.assertTrue(args.should_eat)
-                self.assertEqual(args.this_food, 'snacks')
+            def __call__(self, args):
+                # target command's args populated regardless
+                test.assertTrue(args.should_eat)
+
+                # delegation should populate this command's defaults
+                test.assertEqual(args.this_food, 'snacks')
+
+                # ...in args property as well
+                test.assertEqual(self.args.this_food, 'snacks')
+
+                # self.args is self.delegate_args
+                test.assertIs(self.args, self.delegate_args)
+
+                # ...is args
+                test.assertIs(args, self.args)
+
+                # ...not the "real" args
+                test.assertIsNot(args, self.get_args())
 
         (parser, args) = Root.get_parser()
         parser.parse_args([], args)
