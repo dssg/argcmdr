@@ -120,57 +120,45 @@ class TestCommandGetItem(unittest.TestCase):
 class TestCommandDelegation(unittest.TestCase):
 
     def test_child(test):
-        class Root(RootCommand):
+        @cmd('--no-eat', action='store_false', default=True, dest='should_eat')
+        @cmd(root=True, binding=True)
+        def root(self, args):
+            test.assertTrue(args.should_eat)
+            test.assertFalse(hasattr(args, 'this_food'))
 
-            def __init__(self, parser):
-                parser.add_argument(
-                    '--no-eat',
-                    action='store_false',
-                    default=True,
-                    dest='should_eat',
-                )
+            # This would fail!
+            # (forcing Child to handle missing 'this_food')
+            # self['child'](args)
+            #
+            # This won't ;)
+            self['child'].delegate()
 
-            def __call__(self, args):
-                test.assertTrue(args.should_eat)
-                test.assertFalse(hasattr(args, 'this_food'))
+        @root.register
+        @cmd('--food', default='snacks', dest='this_food')
+        @cmd(binding=True)
+        def child(self, args):
+            # target command's args populated regardless
+            test.assertTrue(args.should_eat)
 
-                # This would fail!
-                # (forcing Child to handle missing 'this_food')
-                # self['child'](args)
-                #
-                # This won't ;)
-                self['child'].delegate()
+            # delegation should populate this command's defaults
+            test.assertEqual(args.this_food, 'snacks')
 
-        @Root.register
-        class Child(Command):
+            # ...in args property as well
+            test.assertEqual(self.args.this_food, 'snacks')
 
-            def __init__(self, parser):
-                parser.add_argument(
-                    '--food',
-                    default='snacks',
-                    dest='this_food',
-                )
+            # self.args is self.delegate_args
+            test.assertIs(self.args, self.delegate_args)
 
-            def __call__(self, args):
-                # target command's args populated regardless
-                test.assertTrue(args.should_eat)
+            # ...is args
+            test.assertIs(args, self.args)
 
-                # delegation should populate this command's defaults
-                test.assertEqual(args.this_food, 'snacks')
+            # ...not the "real" args
+            test.assertIsNot(args, self.get_args())
 
-                # ...in args property as well
-                test.assertEqual(self.args.this_food, 'snacks')
+            # ...only the target get those:
+            test.assertIs(self.root.args, self.get_args())
 
-                # self.args is self.delegate_args
-                test.assertIs(self.args, self.delegate_args)
-
-                # ...is args
-                test.assertIs(args, self.args)
-
-                # ...not the "real" args
-                test.assertIsNot(args, self.get_args())
-
-        (parser, args) = Root.get_parser()
+        (parser, args) = root.get_parser()
         parser.parse_args([], args)
         args.__command__._call_()
 
