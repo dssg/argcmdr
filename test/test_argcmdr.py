@@ -119,12 +119,13 @@ class TestCommandGetItem(unittest.TestCase):
 
 class TestCommandDelegation(unittest.TestCase):
 
-    def test_child(test):
+    def test_delegation_to_child(test):
         @cmd('--no-eat', action='store_false', default=True, dest='should_eat')
         @cmd(root=True, binding=True)
         def root(self, args):
             test.assertTrue(args.should_eat)
             test.assertFalse(hasattr(args, 'this_food'))
+            test.assertIs(args, self.get_args())
 
             # This would fail!
             # (forcing Child to handle missing 'this_food')
@@ -155,11 +156,142 @@ class TestCommandDelegation(unittest.TestCase):
             # ...not the "real" args
             test.assertIsNot(args, self.get_args())
 
-            # ...only the target get those:
+            # ...only the target gets those:
             test.assertIs(self.root.args, self.get_args())
 
         (parser, args) = root.get_parser()
         parser.parse_args([], args)
+        args.__command__._call_()
+
+    def test_delegation_to_root(test):
+        @cmd('--no-eat', action='store_false', default=True, dest='should_eat')
+        @cmd(root=True, binding=True)
+        def root(self, args, parser):
+            # root *also* has child's args, because child was called
+            test.assertTrue(args.should_eat)
+            test.assertEqual(args.this_food, 'snacks')
+
+            # root gets delegate_args -- even though it doesn't *strictly* need it
+            #
+            # (child's args are superset of root's, so this could be omitted in this case,
+            # perhaps as an optimization.)
+            #
+            # however, this way, root gets access to *its* subparser, (on the off-chance that
+            # that matters). and, we're just consistent and straight-forward about it.
+            test.assertIs(args, self.args)
+            test.assertIs(self.args, self.delegate_args)
+
+            test.assertIs(parser, args.__parser__)
+            test.assertIs(parser, self._parser_)
+
+        @root.register
+        @cmd('--food', default='snacks', dest='this_food')
+        @cmd(binding=True)
+        def child(self, args):
+            test.assertTrue(args.should_eat)
+            test.assertEqual(args.this_food, 'snacks')
+
+            # self.args is NOT self.delegate_args
+            test.assertIs(args, self.get_args())
+            test.assertIs(args, self.args)
+            test.assertIsNot(self.args, self.delegate_args)
+
+            self.root.delegate()
+
+        (parser, args) = root.get_parser()
+        parser.parse_args(['child'], args)
+        args.__command__._call_()
+
+    def test_delegation_to_sibling(test):
+        @cmd('--no-eat', action='store_false', default=True, dest='should_eat', root=True)
+        def root():
+            raise AssertionError("I should not be invoked")
+
+        @root.register
+        @cmd('--candy', default='jelly beans', dest='this_candy', binding=True)
+        def left(self, args, parser):
+            test.assertTrue(args.should_eat)
+            test.assertEqual(args.this_food, 'snacks')
+
+            # delegation should populate this command's defaults
+            test.assertEqual(args.this_candy, 'jelly beans')
+
+            # self.args is self.delegate_args
+            test.assertIs(self.args, self.delegate_args)
+
+            # ...is args
+            test.assertIs(args, self.args)
+
+            # ...not the "real" args
+            test.assertIsNot(args, self.get_args())
+
+        @root.register
+        @cmd('--food', default='snacks', dest='this_food', binding=True)
+        def right(self, args):
+            test.assertTrue(args.should_eat)
+            test.assertEqual(args.this_food, 'snacks')
+
+            test.assertFalse(hasattr(args, 'this_candy'))
+
+            # self.args is NOT self.delegate_args
+            test.assertIs(args, self.get_args())
+            test.assertIs(args, self.args)
+            test.assertIsNot(self.args, self.delegate_args)
+
+            self[-1, 'left'].delegate()
+
+        (parser, args) = root.get_parser()
+        parser.parse_args(['right'], args)
+        args.__command__._call_()
+
+    def test_arbitrary_access(test):
+        @cmd('--no-eat', action='store_false', default=True, dest='should_eat', root=True)
+        def root():
+            raise AssertionError("I should not be invoked")
+
+        @root.register
+        class Left(Command):
+
+            def __init__(self, parser):
+                parser.add_argument(
+                    '--candy',
+                    default='jelly beans',
+                    dest='this_candy',
+                )
+
+            def __call__(self):
+                raise AssertionError("I should not be invoked")
+
+            def method(self):
+                test.assertTrue(self.args.should_eat)
+                test.assertEqual(self.args.this_food, 'snacks')
+
+                # delegation should populate this command's defaults
+                test.assertEqual(self.args.this_candy, 'jelly beans')
+
+                # self.args is self.delegate_args
+                test.assertIs(self.args, self.delegate_args)
+
+                # ...not the "real" args
+                test.assertIsNot(self.args, self.get_args())
+
+        @root.register
+        @cmd('--food', default='snacks', dest='this_food', binding=True)
+        def right(self, args):
+            test.assertTrue(args.should_eat)
+            test.assertEqual(args.this_food, 'snacks')
+
+            test.assertFalse(hasattr(args, 'this_candy'))
+
+            # self.args is NOT self.delegate_args
+            test.assertIs(args, self.get_args())
+            test.assertIs(args, self.args)
+            test.assertIsNot(self.args, self.delegate_args)
+
+            self[-1, 'left'].method()
+
+        (parser, args) = root.get_parser()
+        parser.parse_args(['right'], args)
         args.__command__._call_()
 
 

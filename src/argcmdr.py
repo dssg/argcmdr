@@ -302,6 +302,29 @@ class Command:
         args = self.get_args()
 
         if args.__command__ is not self:
+            # The property is here made consistent with the argumentation of
+            # the delegate() interface; and, methods relying on this property
+            # are thereby enabled regardless of whether their associated
+            # command was invoked directly or via delegation.
+            #
+            # Note: It is arguable that this is unnecessary in the case that
+            # the requesting command is an ancestor of the CLI-invoked
+            # command -- in this case, all of the requesting command's
+            # arguments should be filled, and there's little need.
+            #
+            # This condition could be tested here with the expression:
+            #
+            #     self (not) in args.__command__.__parents__
+            #
+            # (and in which case, for consistency, delegate() should perhaps be
+            # modified to also pass non-delegate args to the ancestor command).
+            #
+            # However, more than just the CLI arguments, delegate_args further
+            # populates the command's own sub-parser. And so, for now, for
+            # consistency and relative simplicity, all commands will *always*
+            # get their "own" args and parser, via delegate_args whenever it is
+            # not the CLI-invoked command.
+            #
             return self.delegate_args
 
         return args
