@@ -294,6 +294,59 @@ class TestCommandDelegation(unittest.TestCase):
         parser.parse_args(['right'], args)
         args.__command__._call_()
 
+    def test_parser_defaults(test):
+        """delegate_args respects ArgumentParser.set_defaults"""
+        class Root(RootCommand):
+
+            def __init__(self, parser):
+                parser.add_argument(
+                    '--no-eat',
+                    action='store_false',
+                    default=True,
+                    dest='should_eat',
+                )
+
+                parser.set_defaults(root='so cool')
+
+            def __call__(self, args):
+                test.assertTrue(args.should_eat)
+                test.assertEqual(args.root, 'so cool')
+                test.assertFalse(hasattr(args, 'this_food'))
+                test.assertIs(args, self.get_args())
+
+                self['child'].delegate()
+
+        @Root.register
+        class Child(Command):
+
+            def __init__(self, parser):
+                parser.add_argument(
+                    '--food',
+                    default='snacks',
+                    dest='this_food',
+                )
+
+                parser.set_defaults(child='even cooler')
+
+            def __call__(self, args):
+                test.assertTrue(args.should_eat)
+                test.assertEqual(args.root, 'so cool')
+
+                # delegation should populate this command's defaults
+                test.assertEqual(args.this_food, 'snacks')
+                test.assertEqual(args.child, 'even cooler')
+
+                # self.args is self.delegate_args
+                test.assertIs(args, self.args)
+                test.assertIs(self.args, self.delegate_args)
+
+                # ...not the "real" args
+                test.assertIsNot(args, self.get_args())
+
+        (parser, args) = Root.get_parser()
+        parser.parse_args([], args)
+        args.__command__._call_()
+
 
 class TestCommandRoot(unittest.TestCase):
 

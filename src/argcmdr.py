@@ -337,8 +337,13 @@ class Command:
     def delegate_args(self):
         args = copy.copy(self.get_args())
         args.__parser__ = self._parser_
+
         for action in self._parser_._actions:
             args.__dict__.setdefault(action.dest, action.default)
+
+        for default in self._parser_._defaults.items():
+            args.__dict__.setdefault(*default)
+
         return args
 
     def _call_(self, *additional, base_args=None, target_name='__call__'):
