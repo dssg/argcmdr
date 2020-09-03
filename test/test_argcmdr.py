@@ -30,16 +30,10 @@ class TryCommandTestCase(unittest.TestCase):
 
     def try_command(self, command_cls):
         # ensure parser is available to tests with nested command defns
-        self.parser = command_cls.base_parser()
-
-        command = command_cls(self.parser)
-        self.parser.set_defaults(
-            __command__=command,
-            __parser__=self.parser,
-        )
-
-        args = self.parser.parse_args([])
-        command(args)
+        (self.parser, args) = command_cls.get_parser()
+        self.parser.parse_args([], args)
+        command = args.__command__
+        command.call(args)
 
 
 class TryMainTestCase(unittest.TestCase):
@@ -340,6 +334,9 @@ class TestSendCommandResult(TryCommandTestCase):
 
             def prepare(self_, args):
                 args.execute_commands = False
+
+                # don't clutter test output
+                args.show_commands = False
 
                 (code, std, err) = yield self_.local['which']['python']
 
