@@ -243,6 +243,8 @@ class Command:
         "negative integer (to ascend), not %r"
     )
 
+    formatter_class = argparse.HelpFormatter
+
     def __init__(self, parser):
         self.__children__ = None
         self.__parents__ = None
@@ -332,7 +334,8 @@ class Command:
 
     @classmethod
     def base_parser(cls):
-        parser = argparse.ArgumentParser(description=cls.__doc__)
+        parser = argparse.ArgumentParser(description=cls.__doc__,
+                                         formatter_class=cls.formatter_class)
         parser.add_argument(
             '--tb', '--traceback',
             action='store_true',
@@ -341,6 +344,13 @@ class Command:
             help="print error tracebacks",
         )
         return parser
+
+    @staticmethod
+    def sub_parser(subparsers, subcommand):
+        return subparsers.add_parser(subcommand.name,
+                                     description=subcommand.__doc__,
+                                     help=subcommand.help,
+                                     formatter_class=subcommand.formatter_class)
 
     @classmethod
     def build_interface(cls, parser=None, namespace=None, chain=None, parents=()):
@@ -372,9 +382,8 @@ class Command:
                     help="available commands",
                 )
 
-            subparser = subparsers.add_parser(subcommand.name,
-                                              description=subcommand.__doc__,
-                                              help=subcommand.help)
+            subparser = cls.sub_parser(subparsers, subcommand)
+
             yield from subcommand.build_interface(subparser,
                                                   namespace,
                                                   command.__children__,
