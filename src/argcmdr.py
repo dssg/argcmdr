@@ -679,6 +679,7 @@ class CommandDecorator:
                  binding=unset,
                  local=False,
                  root=False,
+                 method_name=None,
                  **parser_kwargs):
         if (local or root) and base is not unset:
             raise TypeError("cannot apply 'local' or 'root' functionality to "
@@ -707,6 +708,11 @@ class CommandDecorator:
         else:
             raise TypeError('binding must be either bool, Binding or unset')
 
+        if method_name is None:
+            self.method_name = 'prepare' if issubclass(self.base, Local) else '__call__'
+        else:
+            self.method_name = method_name
+
         self.args = (parser_args, parser_kwargs)
 
     def __call__(self, target):
@@ -718,9 +724,6 @@ class CommandDecorator:
                 return target
 
         elif callable(target):
-            call_name = 'prepare' if issubclass(self.base, Local) else '__call__'
-            call_target = self.binding(target)
-
             return type(
                 target.__name__,
                 (GeneratedCommand, self.base),
@@ -728,7 +731,7 @@ class CommandDecorator:
                     '_args_': args,
                     '__doc__': target.__doc__,
                     '__module__': target.__module__,
-                    call_name: call_target,
+                    self.method_name: self.binding(target),
                 }
             )
 
