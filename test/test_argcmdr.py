@@ -535,6 +535,20 @@ class TestLocalModifier(TryCommandTestCase):
         self.try_command(SimpleCommand)
         command.popen.assert_called_once_with()
 
+    def test_simple_shh(self):
+        command = mock.Mock(spec=Local.local['which']['python'])
+
+        class SimpleCommand(Local):
+
+            def prepare(self_):
+                return (self_.local.SHH, command)
+
+        self.try_command(SimpleCommand)
+        command.run.assert_called_once_with(
+            retcode=0,
+            timeout=None,
+        )
+
 
 class TryExecuteTestCase(unittest.TestCase):
 

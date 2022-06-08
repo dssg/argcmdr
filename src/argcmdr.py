@@ -441,6 +441,27 @@ class CacheDict(collections.defaultdict):
         return value
 
 
+class _SHH(plumbum.commands.ExecutionModifier):
+    """plumbum execution modifier to ensure output is not echoed to terminal
+
+    essentially a no-op, this may be used to override argcmdr settings
+    and cli flags controlling this feature, on a line-by-line basis, to
+    hide unnecessary or problematic (e.g. highly verbose) command output.
+
+    """
+    __slots__ = ('retcode', 'timeout')
+
+    def __init__(self, retcode=0, timeout=None):
+        self.retcode = retcode
+        self.timeout = timeout
+
+    def __rand__(self, cmd):
+        return cmd.run(retcode=self.retcode, timeout=self.timeout)
+
+
+SHH = _SHH()
+
+
 class Local(Command):
 
     local = CacheDict(plumbum.local.__getitem__)
@@ -454,8 +475,11 @@ class Local(Command):
     local.FG = plumbum.FG
     local.TEE = plumbum.TEE
 
+    # ...(as well as our own)
+    local.SHH = SHH
+
     run_kws = frozenset(('retcode',))
-    run_modifiers = frozenset((plumbum.BG, plumbum.FG, plumbum.TEE))
+    run_modifiers = frozenset((plumbum.BG, plumbum.FG, plumbum.TEE, SHH))
 
     @classmethod
     def base_parser(cls):
