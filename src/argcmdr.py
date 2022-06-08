@@ -478,8 +478,7 @@ class Local(Command):
     # ...(as well as our own)
     local.SHH = SHH
 
-    run_kws = frozenset(('retcode',))
-    run_modifiers = frozenset((plumbum.BG, plumbum.FG, plumbum.TEE, SHH))
+    run_kws = frozenset(('retcode', 'timeout'))
 
     @classmethod
     def base_parser(cls):
@@ -539,7 +538,7 @@ class Local(Command):
         if isinstance(commands, plumbum.commands.BaseCommand) or (
             isinstance(commands, (tuple, list)) and
             len(commands) == 2 and
-            commands[0] in self.run_modifiers
+            isinstance(commands[0], plumbum.commands.ExecutionModifier)
         ):
             commands = (commands,)
 
@@ -572,7 +571,11 @@ class Local(Command):
             if args.execute_commands:
                 try:
                     if modifier is not None:
-                        result = command & modifier(**run_kwargs)
+                        if run_kwargs:
+                            result = command & modifier(**run_kwargs)
+                        else:
+                            result = command & modifier
+
                         if result is None:
                             result = empty_result
                     elif args.foreground:

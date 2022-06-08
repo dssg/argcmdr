@@ -549,6 +549,42 @@ class TestLocalModifier(TryCommandTestCase):
             timeout=None,
         )
 
+    def test_global_params(self):
+        command = mock.Mock(spec=Local.local['which']['pythoX'])
+
+        class SimpleCommand(Local):
+
+            def prepare(self_):
+                return (self_.local.FG, command)
+
+            prepare.retcode = None
+
+        self.try_command(SimpleCommand)
+        command.assert_called_once_with(
+            retcode=None,
+            stderr=None,
+            stdin=None,
+            stdout=None,
+            timeout=None,
+        )
+
+    def test_modifier_params(self):
+        command = mock.Mock(spec=Local.local['which']['pythoX'])
+
+        class SimpleCommand(Local):
+
+            def prepare(self_):
+                return (self_.local.FG(retcode=None), command)
+
+        self.try_command(SimpleCommand)
+        command.assert_called_once_with(
+            retcode=None,
+            stderr=None,
+            stdin=None,
+            stdout=None,
+            timeout=None,
+        )
+
 
 class TryExecuteTestCase(unittest.TestCase):
 
