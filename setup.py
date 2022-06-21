@@ -35,7 +35,7 @@ setup(
     install_requires=[
         'argcomplete==1.9.4',
         'Dickens==1.0.1',
-        'plumbum==1.6.4',
+        'plumbum==1.7.2',
     ],
     entry_points={
         'console_scripts': [

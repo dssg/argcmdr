@@ -6,6 +6,7 @@ import subprocess
 import types
 import unittest
 import sys
+import tempfile
 import traceback
 from unittest import mock
 
@@ -484,18 +485,26 @@ class TestCommandDecorator(unittest.TestCase):
 class TestLocalModifier(TryCommandTestCase):
 
     def test_single_default(self):
-        process = mock.Mock()
-        manager = mock.MagicMock()
-        command = mock.Mock(spec=Local.local['which']['python'])
-        command.bgrun.return_value = manager
-        manager.__enter__.return_value = process
+        # tough to trick TEE's select.select() with anything but actual
+        # file descriptors; so, we'll provide them (as TemporaryFile).
 
-        class SimpleCommand(Local):
+        with tempfile.TemporaryFile() as stdout, \
+             tempfile.TemporaryFile() as stderr:
 
-            def prepare(_self):
-                return command
+            process = mock.Mock(stdout=stdout,
+                                stderr=stderr)
+            manager = mock.MagicMock()
+            command = mock.Mock(spec=Local.local['which']['python'])
+            command.bgrun.return_value = manager
+            manager.__enter__.return_value = process
 
-        self.try_command(SimpleCommand)
+            class SimpleCommand(Local):
+
+                def prepare(_self):
+                    return command
+
+            self.try_command(SimpleCommand)
+
         command.bgrun.assert_called_once_with(
             retcode=0,
             stdin=None,
