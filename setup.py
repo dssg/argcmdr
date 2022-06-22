@@ -35,7 +35,26 @@ setup(
     install_requires=[
         'argcomplete==1.9.4',
         'Dickens==1.0.1',
-        'plumbum==1.7.2',
+
+        # Provisionally using fork of plumbum at:
+        #
+        #     https://github.com/jesteria/plumbum/tree/v1.7.2-604
+        #
+        # so as to include patch:
+        #
+        #     https://github.com/jesteria/plumbum/commit/674ae03927ef05f6a2e873019ae0f68231737eb8
+        #
+        # until issue #604 is resolved:
+        #
+        #     https://github.com/tomerfiliba/plumbum/issues/604
+        #
+        # For now not:
+        #
+        # 'plumbum==1.7.2',
+        #
+        # Provisionally:
+        #
+        'plumbum @ git+https://github.com/jesteria/plumbum.git@v1.7.2-604',
     ],
     entry_points={
         'console_scripts': [
