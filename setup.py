@@ -34,7 +34,7 @@ setup(
     py_modules=[MODULE],
     install_requires=[
         'argcomplete==1.9.4',
-        'Dickens==1.0.1',
+        'Dickens==2.0.0',
 
         # Provisionally using fork of plumbum at:
         #
