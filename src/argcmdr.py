@@ -1,6 +1,7 @@
 import argcomplete
 import argparse
 import collections
+import collections.abc
 import enum
 import functools
 import importlib
@@ -254,7 +255,7 @@ class Command:
         args.__parser__.print_usage()
 
     def __getitem__(self, key):
-        if isinstance(key, (str, bytes)) or not isinstance(key, collections.Sequence):
+        if isinstance(key, (str, bytes)) or not isinstance(key, collections.abc.Sequence):
             return self.__getitem__((key,))
 
         if not key:
