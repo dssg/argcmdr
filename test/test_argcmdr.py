@@ -652,14 +652,24 @@ class TryExecuteCwdTestCase(TryExecuteTestCase):
         os.chdir(self.sample_path)
 
         # CWD is usually *not* on PYTHONPATH
-        self.cwd_path_index = sys.path.index('')
-        sys.path.remove('')
+        try:
+            self.cwd_path_index = sys.path.index('')
+        except ValueError:
+            self.cwd_on_path = False
+            self.cwd_path_index = None
+        else:
+            self.cwd_on_path = True
+            sys.path.remove('')
 
     def tearDown(self):
         os.chdir(self.cwd0)
 
-        if sys.path[self.cwd_path_index] != '':
-            sys.path.insert(self.cwd_path_index, '')
+        if self.cwd_on_path:
+            if sys.path[self.cwd_path_index] != '':
+                sys.path.insert(self.cwd_path_index, '')
+        elif self.cwd_path_index is not None:
+            if sys.path[self.cwd_path_index] == '':
+                del sys.path[self.cwd_path_index]
 
         super().tearDown()
 
@@ -669,11 +679,15 @@ class TestExecuteFile(TryExecuteCwdTestCase):
     sample_path = os.path.join(DATA_DIR, 'execute_1')
 
     def test_on_pythonpath(self):
+        if self.cwd_path_index is None:
+            self.cwd_path_index = 0
+
         sys.path.insert(self.cwd_path_index, '')
 
         self.try_execute()
         self.assertEqual(self.test_target, 'SUCCESS')
 
+    @unittest.skipIf(sys.version_info >= (3, 7), "inapplicable to python3.7 and higher")
     def test_not_on_pythonpath(self):
         with self.assertRaises(ImportError):
             import manage
@@ -687,11 +701,15 @@ class TestExecutePackage(TryExecuteCwdTestCase):
     sample_path = os.path.join(DATA_DIR, 'execute_2')
 
     def test_on_pythonpath(self):
+        if self.cwd_path_index is None:
+            self.cwd_path_index = 0
+
         sys.path.insert(self.cwd_path_index, '')
 
         self.try_execute(['subcommand'])
         self.assertEqual(self.test_target, 'SUCCESS')
 
+    @unittest.skipIf(sys.version_info >= (3, 7), "inapplicable to python3.7 and higher")
     def test_not_on_pythonpath(self):
         with self.assertRaises(ImportError):
             import manage

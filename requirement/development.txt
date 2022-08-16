@@ -1,4 +1,4 @@
 bumpversion==0.5.3
-tox==2.9.1
+tox==3.25.1
 twine==1.10.0
 wheel==0.30.0
