@@ -18,7 +18,7 @@ from descriptors import classproperty
 from plumbum import colors
 
 
-__version__ = '0.13.1'
+__version__ = '0.13.2'
 
 __all__ = (
     'cmd',
