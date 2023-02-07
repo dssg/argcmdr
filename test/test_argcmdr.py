@@ -37,7 +37,7 @@ class TryCommandTestCase(unittest.TestCase):
         (self.parser, args) = command_cls.get_parser()
         self.parser.parse_args([], args)
         command = args.__command__
-        command.call(args)
+        command._call_()
 
 
 class TryMainTestCase(unittest.TestCase):
@@ -582,9 +582,6 @@ class TestSendCommandResult(TryCommandTestCase):
 
             def prepare(self_, args):
                 args.execute_commands = False
-
-                # don't clutter test output
-                args.show_commands = False
 
                 (code, std, err) = yield self_.local['which']['python']
 
