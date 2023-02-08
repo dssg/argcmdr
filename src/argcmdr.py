@@ -19,7 +19,7 @@ from descriptors import cachedproperty, classproperty
 from plumbum import colors
 
 
-__version__ = '0.13.2'
+__version__ = '0.14.0'
 
 __all__ = (
     'cmd',
