@@ -172,7 +172,7 @@ In fact, our above, trivial example could be accomplished easily with direct exe
 
 ``local``, bound to the ``Local`` base class, is a dictionary which caches path look-ups for system executables.
 
-This could, however, still be cleaner. For this reason, the ``Local`` command features a parallel invocation interface, ``prepare([args, parser, ...])``::
+This could, however, still be cleaner. For this reason, the ``Local`` command features a parallel invocation interface, ``prepare([args, parser, local, ...])``::
 
     class Main(Local):
         """list directory contents"""
@@ -336,7 +336,7 @@ Command invocation signature
 
 Note that in our last trivial examples of listing directory contents, we made our script dependent upon the ``ls`` command in the operating environment. ``argcmdr`` will not, by default, print tracebacks, and it will colorize unhandled exceptions; however, we might prefer to print a far friendlier error message.
 
-One easy way of printing friendly error messages is to make use of ``argparse.ArgumentParser.error()``. As we've seen, ``Command`` invocation, via either ``__call__`` or ``prepare``, may accept zero arguments, or it may require the parsed arguments ``argparse.Namespace``. Moreover, it may require a second argument, and receive the argument parser::
+One easy way of printing friendly error messages is to make use of ``argparse.ArgumentParser.error()``. As we've seen, ``Command`` invocation, via either ``__call__`` or ``prepare``, may accept zero arguments, or it may require the parsed arguments ``argparse.Namespace``. Moreover, it may require a second argument to receive the argument parser, and a third argument to receive the ``local`` dictionary::
 
     class Main(Local):
         """list directory contents"""
@@ -348,10 +348,10 @@ One easy way of printing friendly error messages is to make use of ``argparse.Ar
                 nargs=argparse.REMAINDER,
             )
 
-        def prepare(self, args, parser):
+        def prepare(self, args, parser, local):
             try:
-                local_exec = self.local['ls']
-            except self.local.CommandNotFound:
+                local_exec = local['ls']
+            except local.CommandNotFound:
                 parser.error('command not available')
 
             yield local_exec[args.remainder]
@@ -619,7 +619,7 @@ Let's define the executable file ``git`` with no particular purpose whatsoever::
         """stash the changes in a dirty working directory away"""
 
         def __call__(self, args):
-            self['save'](args)
+            self['save'].delegate()
 
         class Save(Command):
             """save your local modifications to a new stash"""
@@ -635,8 +635,7 @@ Let's define the executable file ``git`` with no particular purpose whatsoever::
                 )
 
             def __call__(self, args):
-                interactive = getattr(args, 'interactive', False)
-                print("stash save", f"(interactive: {interactive})")
+                print("stash save", f"(interactive: {args.interactive})")
 
         class List(Command):
             """list the stashes that you currently have"""
@@ -669,15 +668,14 @@ Decorator-manufactured commands are no less capable than those derived from clas
         """stash the changes in a dirty working directory away"""
 
         def __call__(self, args):
-            self['save'](args)
+            self['save'].delegate()
 
         @cmd('-p', '--patch', dest='interactive', action='store_true', default=False,
              help="interactively select hunks from the diff between HEAD "
                   "and the working tree to be stashed")
         def save(args):
             """save your local modifications to a new stash"""
-            interactive = getattr(args, 'interactive', False)
-            print("stash save", f"(interactive: {interactive})")
+            print("stash save", f"(interactive: {args.interactive})")
 
         @cmd
         def list():
@@ -692,12 +690,11 @@ Say, however, that we needed to invert the factoring of ``save`` logic between t
     class Stash(Command):
         """stash the changes in a dirty working directory away"""
 
-        def perform_save(self, args):
-            interactive = getattr(args, 'interactive', False)
+        def perform_save(self, interactive=False):
             print("stash save", f"(interactive: {interactive})")
 
-        def __call__(self, args):
-            self.perform_save(args)
+        def __call__(self):
+            self.perform_save()
 
         @cmd('-p', '--patch', dest='interactive', action='store_true', default=False,
              help="interactively select hunks from the diff between HEAD "
@@ -705,7 +702,7 @@ Say, however, that we needed to invert the factoring of ``save`` logic between t
         @cmd(binding=True)
         def save(self, args):
             """save your local modifications to a new stash"""
-            self[-1].perform_save(args)
+            self[-1].perform_save(args.interactive)
 
         @cmd
         def list():
@@ -724,19 +721,18 @@ To improve on the above, we may instead decorate our command function with ``cmd
     class Stash(Command):
         """stash the changes in a dirty working directory away"""
 
-        def perform_save(self, args):
-            interactive = getattr(args, 'interactive', False)
+        def perform_save(self, interactive=False):
             print("stash save", f"(interactive: {interactive})")
 
-        def __call__(self, args):
-            self.perform_save(args)
+        def __call__(self):
+            self.perform_save()
 
         @cmdmethod('-p', '--patch', dest='interactive', action='store_true', default=False,
                    help="interactively select hunks from the diff between HEAD "
                         "and the working tree to be stashed")
         def save(self, args):
             """save your local modifications to a new stash"""
-            self.perform_save(args)
+            self.perform_save(args.interactive)
 
 The ``cmdmethod`` decorator – as well as the complementary ``localmethod`` decorator – alter the binding of the decorated function such that it receives the instance of its parent command – not itself – upon invocation. Much cleaner.
 
@@ -774,6 +770,47 @@ that is with the full expression::
 Because command look-ups are relative to the current command, ``Command`` also offers the ``property`` ``root``, which returns the base command. As such, our redundant expression could be rewritten::
 
     self.root['stash', 'save']
+
+Command delegation
+~~~~~~~~~~~~~~~~~~
+
+As you've seen above, command instance subscription enables access to ancestor and descendent commands from the command hierarchy.
+
+And, simple ``Command`` instances may be executed directly via ``__call__``. However, above, we instead invoked the ``delegate`` method. Why?
+
+* ``__call__`` must be invoked as defined – including its argument signature – which may or may not include ``args`` and/or ``parser`` (and which may change during development)
+* The ``args`` and ``parser`` in the scope of the delegating command – (generally the command actually selected by user argumentation) – reflect the arguments defined for that command, *not* those of the delegated command.
+
+For ``Local`` command instances, the situation, without ``delegate``, is worse:
+
+* To generate system commands (rather than executing them immediately), we must know to target ``prepare`` rather than ``__call__``
+
+For example, above, our ``Stash`` command might look like the following without ``delegate``::
+
+    class Stash(Command):
+        """stash the changes in a dirty working directory away"""
+
+        def __call__(self, args):
+            self['save'](args)
+
+        class Save(Command):
+            """save your local modifications to a new stash"""
+
+            def __init__(self, parser):
+                parser.add_argument(
+                    '-p', '--patch',
+                    dest='interactive',
+                    action='store_true',
+                    default=False,
+                    help="interactively select hunks from the diff between HEAD "
+                         "and the working tree to be stashed",
+                )
+
+            def __call__(self, args):
+                interactive = getattr(args, 'interactive', False)
+                print("stash save", f"(interactive: {interactive})")
+
+Note, in ``Stash.__call__``, the passing through of ``args``; and, in ``Stash.Save.__call__``, the use of ``getattr``. With ``delegate``, neither is required.
 
 The management file
 -------------------
