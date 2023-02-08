@@ -967,14 +967,23 @@ For flexibility, (and, *e.g.*, in support of installation into virtual environme
 
 Rather, for example, to enable argument completion system-wide, specifically for the ``manage`` command (provisioned by ``argcmdr``), you might execute the following from a Bash shell (as the root user)::
 
+    register-python-argcomplete --shell bash manage > /usr/share/bash-completion/completions/python-argcomplete-manage.sh
+
+(or depending upon your system)::
+
     register-python-argcomplete --shell bash manage > /etc/bash_completion.d/python-argcomplete-manage.sh
 
 Alternatively, the same argument completion may be enabled, but only for the current user::
 
+    mkdir -p ~/.local/share/bash-completion/completions/
+    register-python-argcomplete --shell bash manage > ~/.local/share/bash-completion/completions/python-argcomplete-manage.sh
+
+(or as preferred)::
+
     mkdir -p ~/.bash_completion.d
     register-python-argcomplete --shell bash manage > ~/.bash_completion.d/python-argcomplete-manage.sh
 
-Only in the latter case, the user must have the file ``~/.bash_completion``, including contents of the following form::
+Only in the latter case, the user may also required the file ``~/.bash_completion``, including contents of the following form::
 
     if [ -d ~/.bash_completion.d/ ] && [ ! -z "$(ls ~/.bash_completion.d/)" ]; then
       for bcfile in ~/.bash_completion.d/*; do
@@ -982,7 +991,7 @@ Only in the latter case, the user must have the file ``~/.bash_completion``, inc
       done
     fi
 
-(Bash will load this file automatically.)
+(such that Bash will load the completion file automatically).
 
 In the case that neither system-wide nor user-only installation is appropriate, the same argument completion may be enabled, but only for the current shell::
 
