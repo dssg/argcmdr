@@ -346,15 +346,15 @@ class Command:
 
         return args
 
-    def _call_(self, *additional, base_args=None, target_name='__call__'):
-        if base_args is None:
-            nspace = self.get_args()
-            base_args = (nspace, nspace.__parser__)
+    def _call_(self):
+        return self.delegate('__call__')
 
-        call_args = base_args + additional
+    def delegate(self, method_name='__call__', *additional):
+        nspace = self.args
+        call_args = (nspace, nspace.__parser__) + additional
         call_arg_count = len(call_args)
 
-        target_callable = getattr(self, target_name)
+        target_callable = getattr(self, method_name)
         signature = inspect.signature(target_callable)
         parameters = [name for (index, (name, param)) in enumerate(signature.parameters.items())
                       if index < call_arg_count or param.default is param.empty]
@@ -362,24 +362,12 @@ class Command:
 
         if param_count > call_arg_count:
             raise TypeError(
-                f"{self.__class__.__name__}.{target_name}() "
+                f"{self.__class__.__name__}.{method_name}() "
                 "requires too many positional arguments: " +
                 ', '.join(repr(param) for param in parameters[call_arg_count:])
             )
 
         return target_callable(*call_args[:param_count])
-
-    def get_user_signature(self):
-        return ((), {})
-
-    def _user_call(self):
-        (call_args, call_kwargs) = self.get_user_signature()
-        return self._call_(*call_args, **call_kwargs)
-
-    def delegate(self):
-        (args, kwargs) = self.get_user_signature()
-        base_args = (self.delegate_args, self.delegate_args.__parser__)
-        return self._call_(*args, base_args=base_args, **kwargs)
 
     @classproperty
     def name(cls):
@@ -600,11 +588,11 @@ class Local(Command):
             formulation = ' '.join(map(str, command.formulate()))
             print('>', colors['#5FAF5F'] | formulation)
 
-    def get_user_signature(self):
-        return ((self.local,), {'target_name': 'prepare'})
+    def delegate(self, method_name='prepare', *additional):
+        return super().delegate(method_name, self.local, *additional)
 
     def __call__(self, args):
-        commands = self._user_call()
+        commands = self.delegate()
 
         if commands is None:
             return

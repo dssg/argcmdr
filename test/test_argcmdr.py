@@ -347,6 +347,42 @@ class TestCommandDelegation(unittest.TestCase):
         parser.parse_args([], args)
         args.__command__._call_()
 
+    def test_delegation_to_method(test):
+        """command may (re)-delegate to named method"""
+        @cmd(binding=True, root=True)
+        def root(context, args):
+            test.assertFalse(hasattr(args, 'argument'))
+
+            context['child'].delegate()
+
+        @root.register
+        class Child(Command):
+
+            run_count = 0
+
+            def __init__(self, parser):
+                parser.add_argument(
+                    '--nope',
+                    dest='argument',
+                    action='store_false',
+                )
+
+            def __call__(self, args):
+                test.assertTrue(getattr(args, 'argument', None))
+
+                self.delegate('other')
+
+            def other(self, args):
+                self.__class__.run_count += 1
+
+                test.assertTrue(getattr(args, 'argument', None))
+
+        (parser, args) = root.get_parser()
+        parser.parse_args([], args)
+        args.__command__._call_()
+
+        test.assertEqual(Child.run_count, 1)
+
 
 class TestCommandRoot(unittest.TestCase):
 
