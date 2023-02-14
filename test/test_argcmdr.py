@@ -37,7 +37,7 @@ class TryCommandTestCase(unittest.TestCase):
         (self.parser, args) = command_cls.get_parser()
         self.parser.parse_args([], args)
         command = args.__command__
-        command._call_()
+        command.call()
 
 
 class TryMainTestCase(unittest.TestCase):
@@ -161,7 +161,7 @@ class TestCommandDelegation(unittest.TestCase):
 
         (parser, args) = root.get_parser()
         parser.parse_args([], args)
-        args.__command__._call_()
+        args.__command__.call()
 
     def test_delegation_to_root(test):
         @cmd('--no-eat', action='store_false', default=True, dest='should_eat')
@@ -200,7 +200,7 @@ class TestCommandDelegation(unittest.TestCase):
 
         (parser, args) = root.get_parser()
         parser.parse_args(['child'], args)
-        args.__command__._call_()
+        args.__command__.call()
 
     def test_delegation_to_sibling(test):
         @cmd('--no-eat', action='store_false', default=True, dest='should_eat', root=True)
@@ -242,7 +242,7 @@ class TestCommandDelegation(unittest.TestCase):
 
         (parser, args) = root.get_parser()
         parser.parse_args(['right'], args)
-        args.__command__._call_()
+        args.__command__.call()
 
     def test_arbitrary_access(test):
         @cmd('--no-eat', action='store_false', default=True, dest='should_eat', root=True)
@@ -292,7 +292,7 @@ class TestCommandDelegation(unittest.TestCase):
 
         (parser, args) = root.get_parser()
         parser.parse_args(['right'], args)
-        args.__command__._call_()
+        args.__command__.call()
 
     def test_parser_defaults(test):
         """delegate_args respects ArgumentParser.set_defaults"""
@@ -345,7 +345,7 @@ class TestCommandDelegation(unittest.TestCase):
 
         (parser, args) = Root.get_parser()
         parser.parse_args([], args)
-        args.__command__._call_()
+        args.__command__.call()
 
     def test_delegation_to_method(test):
         """command may (re)-delegate to named method"""
@@ -379,7 +379,7 @@ class TestCommandDelegation(unittest.TestCase):
 
         (parser, args) = root.get_parser()
         parser.parse_args([], args)
-        args.__command__._call_()
+        args.__command__.call()
 
         test.assertEqual(Child.run_count, 1)
 

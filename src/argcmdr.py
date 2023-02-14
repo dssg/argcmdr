@@ -69,7 +69,7 @@ def main(command_class,
         argcomplete.autocomplete(parser)
         parser.parse_args(argv, args)
         command = args.__command__
-        command._call_()
+        command.call()
     except Exception as exc:
         if args is None or getattr(args, 'traceback', True):
             raise
@@ -346,7 +346,7 @@ class Command:
 
         return args
 
-    def _call_(self):
+    def call(self):
         return self.delegate('__call__')
 
     def delegate(self, method_name='__call__', *additional):
