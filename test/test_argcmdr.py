@@ -13,9 +13,19 @@ from unittest import mock
 
 import plumbum.commands
 
-import argcmdr
-from argcmdr import *
-from argcmdr import CommandMethod, GeneratedCommand, exhaust_iterable
+from argcmdr import (
+    cmd,
+    Command,
+    CommandMethod,
+    execute,
+    GeneratedCommand,
+    exhaust_iterable,
+    local,
+    Local,
+    localmethod,
+    main,
+    RootCommand,
+)
 
 
 ANSI_ESCAPE = re.compile(r'\x1B\[[0-?]*[ -/]*[@-~]')
@@ -635,7 +645,8 @@ class TestSendCommandResult(TryCommandTestCase):
             self.try_command(SmartCommand)
 
         plain_output = ANSI_ESCAPE.sub('', output.getvalue())
-        self.assertEqual(plain_output,
+        self.assertEqual(
+            plain_output,
             '> /usr/bin/which python\n'
             '> /usr/bin/which TOTAL-FAKE\n'
         )
@@ -725,8 +736,10 @@ class TestCommandDecorator(unittest.TestCase):
         }
 
         command = cmd(*parser_args0, **parser_kwargs0)(
-                  cmd(*parser_args1, **parser_kwargs1)(
-                  self.command))
+            cmd(*parser_args1, **parser_kwargs1)(
+                self.command
+            )
+        )
         self.assertIsNot(command, self.command)
         self.assertIs(command.__call__, self.command)
         self.assertTrue(issubclass(command, GeneratedCommand))
@@ -909,7 +922,7 @@ class TryExecuteTestCase(unittest.TestCase):
         argv.append(self.__class__.__name__)
 
         try:
-            argcmdr.execute(argv=argv)
+            execute(argv=argv)
         except SystemExit as exc:
             self.fail(exc)
 
@@ -977,7 +990,7 @@ class TestExecuteFile(TryExecuteCwdTestCase):
     @unittest.skipIf(sys.version_info >= (3, 7), "inapplicable to python3.7 and higher")
     def test_not_on_pythonpath(self):
         with self.assertRaises(ImportError):
-            import manage
+            import manage  # noqa: F401
 
         self.try_execute()
         self.assertEqual(self.test_target, 'SUCCESS')
@@ -999,7 +1012,7 @@ class TestExecutePackage(TryExecuteCwdTestCase):
     @unittest.skipIf(sys.version_info >= (3, 7), "inapplicable to python3.7 and higher")
     def test_not_on_pythonpath(self):
         with self.assertRaises(ImportError):
-            import manage
+            import manage  # noqa: F401
 
         self.try_execute(['subcommand'])
         self.assertEqual(self.test_target, 'SUCCESS')
