@@ -489,6 +489,13 @@ In this form, ``args`` needn't be passed from method to method; in fact, methods
 
 Note that attempting to access the ``args`` property before invocation arguments have been parsed – *e.g.* within ``__init__`` – is not allowed, and will raise ``RuntimeError``.
 
+Access to the parser
+~~~~~~~~~~~~~~~~~~~~
+
+In addition to ``args``, the ``parser`` associated with the command may alternatively be retrieved via its ``parser`` property.
+
+Similar to ``args``, the ``parser`` is not available until the command has been initialized; however, this property *may* be used *within* ``__init__``, so long as the base ``__init__`` has been invoked (*e.g.* via ``super().__init__``).
+
 Command hierarchy
 -----------------
 
@@ -771,6 +778,12 @@ Because command look-ups are relative to the current command, ``Command`` also o
 
     self.root['stash', 'save']
 
+Finally, a command instance's immediate subcommands may be iterated by iteration of the command, *e.g.*::
+
+    def __call__(self):
+        for subcommand in self:
+            subcommand.delegate()
+
 Command delegation
 ~~~~~~~~~~~~~~~~~~
 
@@ -811,6 +824,15 @@ For example, above, our ``Stash`` command might look like the following without 
                 print("stash save", f"(interactive: {interactive})")
 
 Note, in ``Stash.__call__``, the passing through of ``args``; and, in ``Stash.Save.__call__``, the use of ``getattr``. With ``delegate``, neither is required.
+
+The call() method
++++++++++++++++++
+
+You'll *also* find that there's the command method ``call`` (without underscores)!
+
+This is a shorcut for ``delegate('__call__', …)``: *i.e.* it will only delegate to the bound command by invoking its ``__call__`` method, (even if it's a ``Local`` command defining ``prepare``).
+
+Whereas ``delegate`` is useful for switching between commands via their default invocation methods (either ``__call__`` or ``prepare``), and for switching between execution methods of a single command, ``call`` is useful for ensuring that the bound command will be executed – *i.e.* that its ``__call__`` method will be invoked – regardless of its type. This is important to argcmdr itself (in ``argcmdr.main``), and useful for command delegation across disparate base classes.
 
 The management file
 -------------------

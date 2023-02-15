@@ -19,7 +19,7 @@ from argcmdr import (
     CommandMethod,
     execute,
     GeneratedCommand,
-    exhaust_iterable,
+    _exhaust_iterable,
     local,
     Local,
     localmethod,
@@ -44,9 +44,9 @@ class TryCommandTestCase(unittest.TestCase):
 
     def try_command(self, command_cls):
         # ensure parser is available to tests with nested command defns
-        (self.parser, args) = command_cls.get_parser()
+        (self.parser, args) = command_cls._get_parser_()
         self.parser.parse_args([], args)
-        command = args.__command__
+        command = args._command_
         command.call()
 
 
@@ -77,9 +77,9 @@ class TestCommandGetItem(unittest.TestCase):
         })
 
     def setUp(self):
-        interface = self.Root.build_interface()
+        interface = self.Root._build_interface_()
         (_parser, _namespace, self.root) = next(interface)
-        exhaust_iterable(interface)
+        _exhaust_iterable(interface)
 
     def test_identity(self):
         self.assertIs(self.root[()], self.root)
@@ -127,6 +127,93 @@ class TestCommandGetItem(unittest.TestCase):
             self.root[0]
 
 
+class TestCommandGetItemError(unittest.TestCase):
+
+    def test_get_item_error(test):
+        class BadGetItemCommand(Command):
+
+            def __init__(self, parser):
+                super().__init__(parser)
+
+                with test.assertRaises(RuntimeError):
+                    self['nope']
+
+            def __call__(self):
+                pass
+
+        next(BadGetItemCommand._build_interface_())
+
+    def test_get_item_error_quick(test):
+        class QuickBadGetItemCommand(Command):
+
+            def __init__(self, _parser):
+                with test.assertRaises(RuntimeError):
+                    self['nope']
+
+            def __call__(self):
+                pass
+
+        next(QuickBadGetItemCommand._build_interface_())
+
+
+class TestSubcommandIteration(unittest.TestCase):
+
+    @staticmethod
+    def build_interface(command):
+        interface = command._build_interface_()
+        (_parser, _namespace, root) = next(interface)
+        _exhaust_iterable(interface)
+        return root
+
+    def test_iter_children(self):
+        Leaf1 = type('Leaf1', (Command,), {})
+        Leaf2 = type('Leaf2', (Command,), {})
+        Branch1 = type('Branch1', (Command,), {
+            'Leaf1': Leaf1,
+        })
+        Branch2 = type('Branch2', (Command,), {
+            'Leaf2': Leaf2,
+        })
+        Root = type('Root', (Command,), {
+            'Branch1': Branch1,
+            'Branch2': Branch2,
+        })
+
+        root = self.build_interface(Root)
+
+        self.assertEqual(list(root), [root['branch1'], root['branch2']])
+        self.assertEqual(list(root['branch1']), [root['branch1', 'leaf1']])
+        self.assertEqual(list(root['branch2']), [root['branch2', 'leaf2']])
+        self.assertEqual(list(root['branch1', 'leaf1']), [])
+        self.assertEqual(list(root['branch2', 'leaf2']), [])
+
+    def test_iter_error(test):
+        class BadIterCommand(Command):
+
+            def __init__(self, parser):
+                super().__init__(parser)
+
+                with test.assertRaises(RuntimeError):
+                    list(self)
+
+            def __call__(self):
+                pass
+
+        test.build_interface(BadIterCommand)
+
+    def test_iter_error_quick(test):
+        class QuickBadIterCommand(Command):
+
+            def __init__(self, _parser):
+                with test.assertRaises(RuntimeError):
+                    list(self)
+
+            def __call__(self):
+                pass
+
+        test.build_interface(QuickBadIterCommand)
+
+
 class TestCommandDelegation(unittest.TestCase):
 
     def test_delegation_to_child(test):
@@ -169,9 +256,9 @@ class TestCommandDelegation(unittest.TestCase):
             # ...only the target gets those:
             test.assertIs(self.root.args, self.get_args())
 
-        (parser, args) = root.get_parser()
+        (parser, args) = root._get_parser_()
         parser.parse_args([], args)
-        args.__command__.call()
+        args._command_.call()
 
     def test_delegation_to_root(test):
         @cmd('--no-eat', action='store_false', default=True, dest='should_eat')
@@ -191,7 +278,7 @@ class TestCommandDelegation(unittest.TestCase):
             test.assertIs(args, self.args)
             test.assertIs(self.args, self.delegate_args)
 
-            test.assertIs(parser, args.__parser__)
+            test.assertIs(parser, args._parser_)
             test.assertIs(parser, self._parser_)
 
         @root.register
@@ -208,9 +295,9 @@ class TestCommandDelegation(unittest.TestCase):
 
             self.root.delegate()
 
-        (parser, args) = root.get_parser()
+        (parser, args) = root._get_parser_()
         parser.parse_args(['child'], args)
-        args.__command__.call()
+        args._command_.call()
 
     def test_delegation_to_sibling(test):
         @cmd('--no-eat', action='store_false', default=True, dest='should_eat', root=True)
@@ -250,9 +337,9 @@ class TestCommandDelegation(unittest.TestCase):
 
             self[-1, 'left'].delegate()
 
-        (parser, args) = root.get_parser()
+        (parser, args) = root._get_parser_()
         parser.parse_args(['right'], args)
-        args.__command__.call()
+        args._command_.call()
 
     def test_arbitrary_access(test):
         @cmd('--no-eat', action='store_false', default=True, dest='should_eat', root=True)
@@ -300,9 +387,9 @@ class TestCommandDelegation(unittest.TestCase):
 
             self[-1, 'left'].method()
 
-        (parser, args) = root.get_parser()
+        (parser, args) = root._get_parser_()
         parser.parse_args(['right'], args)
-        args.__command__.call()
+        args._command_.call()
 
     def test_parser_defaults(test):
         """delegate_args respects ArgumentParser.set_defaults"""
@@ -353,9 +440,9 @@ class TestCommandDelegation(unittest.TestCase):
                 # ...not the "real" args
                 test.assertIsNot(args, self.get_args())
 
-        (parser, args) = Root.get_parser()
+        (parser, args) = Root._get_parser_()
         parser.parse_args([], args)
-        args.__command__.call()
+        args._command_.call()
 
     def test_delegation_to_method(test):
         """command may (re)-delegate to named method"""
@@ -387,9 +474,9 @@ class TestCommandDelegation(unittest.TestCase):
 
                 test.assertTrue(getattr(args, 'argument', None))
 
-        (parser, args) = root.get_parser()
+        (parser, args) = root._get_parser_()
         parser.parse_args([], args)
-        args.__command__.call()
+        args._command_.call()
 
         test.assertEqual(Child.run_count, 1)
 
@@ -407,7 +494,7 @@ class TestCommandRoot(unittest.TestCase):
         })
 
     def setUp(self):
-        for (_parser, _namespace, command) in self.Root.build_interface():
+        for (_parser, _namespace, command) in self.Root._build_interface_():
             setattr(self, command.name, command)
 
     def test_root_0(self):
@@ -496,8 +583,8 @@ class TestPrepareCallSignature(TryCommandTestCase):
             def prepare(self_, args):
                 self.assertIsInstance(self_, Simple)
                 self.assertIsInstance(args, argparse.Namespace)
-                self.assertIs(args.__command__, self_)
-                self.assertIs(args.__parser__, self.parser)
+                self.assertIs(args._command_, self_)
+                self.assertIs(args._parser_, self.parser)
 
         self.try_command(Simple)
 
@@ -507,8 +594,8 @@ class TestPrepareCallSignature(TryCommandTestCase):
             def prepare(self_, args, parser):
                 self.assertIsInstance(self_, Deep)
                 self.assertIsInstance(args, argparse.Namespace)
-                self.assertIs(args.__command__, self_)
-                self.assertIs(args.__parser__, self.parser)
+                self.assertIs(args._command_, self_)
+                self.assertIs(args._parser_, self.parser)
                 self.assertIs(parser, self.parser)
 
         self.try_command(Deep)
@@ -519,8 +606,8 @@ class TestPrepareCallSignature(TryCommandTestCase):
             def prepare(self_, args, parser, local):
                 self.assertIsInstance(self_, DeepLocal)
                 self.assertIsInstance(args, argparse.Namespace)
-                self.assertIs(args.__command__, self_)
-                self.assertIs(args.__parser__, self.parser)
+                self.assertIs(args._command_, self_)
+                self.assertIs(args._parser_, self.parser)
                 self.assertIs(parser, self.parser)
                 self.assertIs(local, self_.local)
 
@@ -532,8 +619,8 @@ class TestPrepareCallSignature(TryCommandTestCase):
             def prepare(self_, args, parser, local, lang='en'):
                 self.assertIsInstance(self_, Fancy)
                 self.assertIsInstance(args, argparse.Namespace)
-                self.assertIs(args.__command__, self_)
-                self.assertIs(args.__parser__, self.parser)
+                self.assertIs(args._command_, self_)
+                self.assertIs(args._parser_, self.parser)
                 self.assertIs(parser, self.parser)
                 self.assertEqual(lang, 'en')
 
@@ -567,8 +654,8 @@ class TestPrepareCallSignature(TryCommandTestCase):
             def prepare(self_, args, parser=None, local=None, lang='en'):
                 self.assertIsInstance(self_, Tricky)
                 self.assertIsInstance(args, argparse.Namespace)
-                self.assertIs(args.__command__, self_)
-                self.assertIs(args.__parser__, self.parser)
+                self.assertIs(args._command_, self_)
+                self.assertIs(args._parser_, self.parser)
                 self.assertIs(parser, self.parser)
                 self.assertEqual(lang, 'en')
 
@@ -577,25 +664,83 @@ class TestPrepareCallSignature(TryCommandTestCase):
 
 class TestArgsProperty(TryMainTestCase):
 
-    def test_identity(self):
+    def test_identity(test):
         class ArgsCommand(Command):
 
-            def __call__(self_, args):
-                self.assertIs(self_.args, args)
+            def __call__(self, args):
+                test.assertIs(self.args, args)
+                test.assertIs(self._args_, args)
 
-        self.try_main(ArgsCommand)
+        test.try_main(ArgsCommand)
 
-    def test_error(self):
+    def test_access_error(test):
         class BadArgsCommand(Command):
 
-            def __init__(self_, _parser):
-                with self.assertRaises(RuntimeError):
-                    self_.args
+            def __init__(self, _parser):
+                with test.assertRaises(RuntimeError):
+                    self.args
 
             def __call__(self):
                 pass
 
-        self.try_main(BadArgsCommand)
+        test.try_main(BadArgsCommand)
+
+    def test_set_error(test):
+        class BadArgsCommand(Command):
+
+            def __init__(self, _parser):
+                with test.assertRaises(AttributeError):
+                    self.args = None
+
+            def __call__(self):
+                pass
+
+        test.try_main(BadArgsCommand)
+
+
+class TestParserProperty(TryMainTestCase):
+
+    def test_identity(test):
+        class ParserCommand(Command):
+
+            def __init__(self, parser):
+                super().__init__(parser)
+                test.assertIs(self.parser, parser)
+                test.assertIs(self._parser_, parser)
+
+            def __call__(self, args, parser):
+                test.assertIs(self.parser, parser)
+                test.assertIs(self._parser_, parser)
+
+        test.try_main(ParserCommand)
+
+    def test_identity_no_super(test):
+        class QuickParserCommand(Command):
+
+            def __init__(self, parser):
+                test.assertIs(self.parser, None)
+                test.assertFalse(hasattr(self, '_parser_'))
+                test.assertIsNot(parser, None)
+
+            def __call__(self, args, parser):
+                test.assertIs(self.parser, parser)
+                test.assertIs(self._parser_, parser)
+                test.assertIsNot(parser, None)
+
+        test.try_main(QuickParserCommand)
+
+    def test_set_error(test):
+        class BadParserCommand(Command):
+
+            def __init__(self, _parser):
+                with test.assertRaises(AttributeError):
+                    self.parser = None
+
+            def __call__(self):
+                with test.assertRaises(AttributeError):
+                    self.parser = None
+
+        test.try_main(BadParserCommand)
 
 
 class TestSendCommandResult(TryCommandTestCase):
@@ -716,7 +861,7 @@ class TestCommandDecorator(unittest.TestCase):
         self.assertIs(command.__call__, self.command)
         self.assertTrue(issubclass(command, GeneratedCommand))
         self.assertTrue(issubclass(command, Command))
-        self.assertEqual(command._args_, [])
+        self.assertEqual(command._parser_args_, [])
         self.assertIs(command(None).__call__, self.command)
 
     def test_parsing_cmd(self):
@@ -744,8 +889,8 @@ class TestCommandDecorator(unittest.TestCase):
         self.assertIs(command.__call__, self.command)
         self.assertTrue(issubclass(command, GeneratedCommand))
         self.assertTrue(issubclass(command, Command))
-        self.assertEqual(command._args_, [(parser_args1, parser_kwargs1),
-                                          (parser_args0, parser_kwargs0)])
+        self.assertEqual(command._parser_args_, [(parser_args1, parser_kwargs1),
+                                                 (parser_args0, parser_kwargs0)])
 
         parser = mock.Mock()
         instance = command(parser)
@@ -760,7 +905,7 @@ class TestCommandDecorator(unittest.TestCase):
         self.assertIs(command.prepare, self.command)
         self.assertTrue(issubclass(command, GeneratedCommand))
         self.assertTrue(issubclass(command, Local))
-        self.assertEqual(command._args_, [])
+        self.assertEqual(command._parser_args_, [])
 
         instance = command(None)
         self.assertIsInstance(instance.prepare, types.MethodType)
@@ -773,7 +918,7 @@ class TestCommandDecorator(unittest.TestCase):
         self.assertIs(command.prepare.__func__, self.command)
         self.assertTrue(issubclass(command, GeneratedCommand))
         self.assertTrue(issubclass(command, Local))
-        self.assertEqual(command._args_, [])
+        self.assertEqual(command._parser_args_, [])
 
         instance = command(None)
         instance.__getitem__ = mock.Mock()

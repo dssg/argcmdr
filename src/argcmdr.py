@@ -15,8 +15,12 @@ import sys
 
 import plumbum
 import plumbum.commands
-from descriptors import cachedproperty, classproperty
 from plumbum import colors
+
+from descriptors import (
+    cachedproperty as _cachedproperty,
+    classproperty as _classproperty,
+)
 
 
 __version__ = '0.14.0'
@@ -36,7 +40,7 @@ __all__ = (
 )
 
 
-def friendly_version(version_info):
+def _friendly_version(version_info):
     return '.'.join(map(str, version_info[:3]))
 
 
@@ -45,14 +49,14 @@ def check_version(minimum_version, version_info=sys.version_info):
         raise EnvironmentError(
             "{self} requires Python version {} or higher, not: {}"
             .format(
-                *(friendly_version(info) for info in (minimum_version,
-                                                      version_info)),
+                *(_friendly_version(info) for info in (minimum_version,
+                                                       version_info)),
                 self=sys.argv[0].strip('./'),
             )
         )
 
 
-def noop(*args, **kwargs):
+def _noop(*args, **kwargs):
     pass
 
 
@@ -60,15 +64,15 @@ def main(command_class,
          minimum_version=(0,),
          argv=None,
          outfile=sys.stdout,
-         extend_parser=noop):
+         extend_parser=_noop):
     args = None
     try:
         check_version(minimum_version)
-        (parser, args) = command_class.get_parser()
+        (parser, args) = command_class._get_parser_()
         extend_parser(parser)
         argcomplete.autocomplete(parser)
         parser.parse_args(argv, args)
-        command = args.__command__
+        command = args._command_
         command.call()
     except Exception as exc:
         if args is None or getattr(args, 'traceback', True):
@@ -186,9 +190,9 @@ def execute(argv=None):
 
     # determine entrypoint
     for command_filter in (
-        _is_entrypoint,
-        _is_root_command,
-        _is_command,
+        _is_entrypoint_,
+        _is_root_command_,
+        _is_command_,
     ):
         candidates = (value for value in vars(manager).values()
                       if command_filter(value))
@@ -217,45 +221,63 @@ def execute(argv=None):
     sys.exit(1)
 
 
-def _is_entrypoint(obj):
+def _is_entrypoint_(obj):
     return getattr(obj, '_argcmdr_entrypoint_', False)
 
 
-def _is_root_command(obj):
+def _is_root_command_(obj):
     return (isinstance(obj, type) and
             issubclass(obj, RootCommand) and
             obj is not RootCommand and
             obj is not LocalRoot)
 
 
-def _is_command(obj):
+def _is_command_(obj):
     return (isinstance(obj, type) and
             issubclass(obj, Command) and
             obj is not Command and
             obj is not Local)
 
 
-exhaust_iterable = collections.deque(maxlen=0).extend
+_exhaust_iterable = collections.deque(maxlen=0).extend
+
+_command_lookup_error_message = ("command hierarchy indices must be str (to descend), or "
+                                 "negative integer (to ascend), not %r")
 
 
 class Command:
 
-    command_lookup_error_message = (
-        "command hierarchy indices must be str (to descend), or "
-        "negative integer (to ascend), not %r"
-    )
+    #
+    # interface *intended* for override/extension by subclasses
+    #
 
     formatter_class = argparse.HelpFormatter
 
-    def __init__(self, parser):
-        self.args = None
-        self._parser_ = None
+    @_classproperty
+    def help(cls):
+        if cls.__doc__ is None:
+            return None
 
-        self.__children__ = None
-        self.__parents__ = None
+        parts = re.split(r'(?:\. )|\n', cls.__doc__, 1)
+        return parts[0]
+
+    @_classproperty
+    def name(cls):
+        return cls.__name__.lower()
+
+    def __init__(self, parser):
+        self._args_ = None
+        self._parser_ = parser
+
+        self._children_ = None
+        self._parents_ = None
 
     def __call__(self, args):
-        args.__parser__.print_usage()
+        args._parser_.print_usage()
+
+    #
+    # public interface
+    #
 
     def __getitem__(self, key):
         if isinstance(key, (str, bytes)) or not isinstance(key, collections.abc.Sequence):
@@ -267,30 +289,35 @@ class Command:
         head = key[0]
 
         if isinstance(head, str):
-            if head in self.__children__:
-                item = self.__children__[head]
-            else:
+            item = self._get_children_().get(head)
+
+            if item is None:
                 raise KeyError(f"command {self.name} has no child {head!r}")
         elif isinstance(head, int):
             if head >= 0:
-                raise ValueError(self.command_lookup_error_message % head)
+                raise ValueError(_command_lookup_error_message % head)
 
             try:
-                item = self.__parents__[-1 - head]
+                item = self._get_parents_()[-1 - head]
             except IndexError:
                 raise IndexError(f"command {self.name} has no parent {head!r}")
         else:
-            raise TypeError(self.command_lookup_error_message % head)
+            raise TypeError(_command_lookup_error_message % head)
 
         return item.__getitem__(key[1:])
 
+    def __iter__(self):
+        yield from self._get_children_().values()
+
     @property
     def root(self):
-        if self.__parents__:
-            return self.__parents__[-1]
+        try:
+            return self._get_parents_()[-1]
+        except IndexError:
+            return None
 
     def get_args(self):
-        args = self.__dict__.get('args')
+        args = getattr(self, '_args_', None)  # user *may* neglect to super().__init__
 
         if args is None:
             raise RuntimeError('parsed argument namespace not available at this stage')
@@ -301,7 +328,7 @@ class Command:
     def args(self):
         args = self.get_args()
 
-        if args.__command__ is not self:
+        if args._command_ is not self:
             # The property is here made consistent with the argumentation of
             # the delegate() interface; and, methods relying on this property
             # are thereby enabled regardless of whether their associated
@@ -314,7 +341,7 @@ class Command:
             #
             # This condition could be tested here with the expression:
             #
-            #     self (not) in args.__command__.__parents__
+            #     self (not) in args._command_._parents_
             #
             # (and in which case, for consistency, delegate() should perhaps be
             # modified to also pass non-delegate args to the ancestor command).
@@ -329,14 +356,10 @@ class Command:
 
         return args
 
-    @args.setter
-    def args(self, namespace):
-        self.__dict__['args'] = namespace
-
-    @cachedproperty
+    @_cachedproperty
     def delegate_args(self):
         args = copy.copy(self.get_args())
-        args.__parser__ = self._parser_
+        args._parser_ = self._parser_
 
         for action in self._parser_._actions:
             args.__dict__.setdefault(action.dest, action.default)
@@ -346,12 +369,16 @@ class Command:
 
         return args
 
-    def call(self):
-        return self.delegate('__call__')
+    @property
+    def parser(self):
+        return getattr(self, '_parser_', None)  # user *may* neglect to super().__init__
+
+    def call(self, *additional):
+        return self.delegate('__call__', *additional)
 
     def delegate(self, method_name='__call__', *additional):
         nspace = self.args
-        call_args = (nspace, nspace.__parser__) + additional
+        call_args = (nspace, nspace._parser_) + additional
         call_arg_count = len(call_args)
 
         target_callable = getattr(self, method_name)
@@ -369,96 +396,113 @@ class Command:
 
         return target_callable(*call_args[:param_count])
 
-    @classproperty
-    def name(cls):
-        return cls.__name__.lower()
+    #
+    # interface which *may* be overriden/extended by subclasses to customize operation
+    #
 
-    @classproperty
-    def help(cls):
-        if cls.__doc__ is None:
-            return None
+    _allow_traceback_ = True
 
-        parts = re.split(r'(?:\. )|\n', cls.__doc__, 1)
-        return parts[0]
-
-    @classproperty
-    def subcommands(cls):
+    @_classproperty
+    def _subcommands_(cls):
         return [value for value in vars(cls).values()
                 if isinstance(value, type) and issubclass(value, Command)]
 
     @staticmethod
-    def base_namespace():
+    def _new_namespace_():
         return argparse.Namespace()
 
     @classmethod
-    def base_parser(cls):
+    def _new_parser_(cls):
         parser = argparse.ArgumentParser(description=cls.__doc__,
                                          formatter_class=cls.formatter_class)
-        parser.add_argument(
-            '--tb', '--traceback',
-            action='store_true',
-            default=False,
-            dest='traceback',
-            help="print error tracebacks",
-        )
+
+        if cls._allow_traceback_:
+            parser.add_argument(
+                '--tb', '--traceback',
+                action='store_true',
+                default=False,
+                dest='traceback',
+                help="print error tracebacks",
+            )
+
         return parser
 
     @staticmethod
-    def sub_parser(subparsers, subcommand):
+    def _new_subparser_(subparsers, subcommand):
         return subparsers.add_parser(subcommand.name,
                                      description=subcommand.__doc__,
                                      help=subcommand.help,
                                      formatter_class=subcommand.formatter_class)
 
     @classmethod
-    def build_interface(cls, parser=None, namespace=None, chain=None, parents=()):
+    def _build_interface_(cls, parser=None, namespace=None, chain=None, parents=()):
         if parser is None:
-            parser = cls.base_parser()
+            parser = cls._new_parser_()
         if namespace is None:
-            namespace = cls.base_namespace()
+            namespace = cls._new_namespace_()
 
         command = cls(parser)
-        command.__parents__ = parents
-        command.__children__ = {}
-        command.args = namespace
-        command._parser_ = parser
+        command._parents_ = parents
+        command._children_ = {}
+        command._args_ = namespace
+        command._parser_ = parser  # user *may* neglect to super().__init__
 
         if chain is not None:
             chain[cls.name] = command
 
         parser.set_defaults(
-            __command__=command,
-            __parser__=parser,
+            _command_=command,
+            _parser_=parser,
         )
         yield (parser, namespace, command)
 
         subparsers = None
         subparents = (command,) + parents
-        for subcommand in cls.subcommands:
+        for subcommand in cls._subcommands_:
             if subparsers is None:
                 subparsers = parser.add_subparsers(
                     title="{} commands".format(cls.name),
                     help="available commands",
                 )
 
-            subparser = cls.sub_parser(subparsers, subcommand)
+            subparser = cls._new_subparser_(subparsers, subcommand)
 
-            yield from subcommand.build_interface(subparser,
-                                                  namespace,
-                                                  command.__children__,
-                                                  subparents)
-
-    @classmethod
-    def extend_parser(cls, parser, namespace):
-        interface = cls.build_interface(parser, namespace)
-        exhaust_iterable(interface)
+            yield from subcommand._build_interface_(subparser,
+                                                    namespace,
+                                                    command._children_,
+                                                    subparents)
 
     @classmethod
-    def get_parser(cls):
-        parser = cls.base_parser()
-        namespace = cls.base_namespace()
-        cls.extend_parser(parser, namespace)
+    def _init_parser_(cls, parser, namespace):
+        interface = cls._build_interface_(parser, namespace)
+        _exhaust_iterable(interface)
+
+    @classmethod
+    def _get_parser_(cls):
+        parser = cls._new_parser_()
+        namespace = cls._new_namespace_()
+        cls._init_parser_(parser, namespace)
         return (parser, namespace)
+
+    #
+    # internal helpers
+    #
+
+    def _get_children_(self):
+        children = getattr(self, '_children_', None)  # user *may* neglect to super().__init__
+
+        if children is None:
+            raise RuntimeError('hierarchy of constructed commands not available at this stage')
+
+        return children
+
+    def _get_parents_(self):
+        parents = getattr(self, '_parents_', None)  # user *may* neglect to super().__init__
+
+        if parents is None:
+            raise RuntimeError('hierarchy of constructed commands not available at this stage')
+
+        return parents
 
 
 class RootCommand(Command):
@@ -469,11 +513,6 @@ class RootCommand(Command):
         super().__init_subclass__(**kwargs)
         cls._registry_ = []
 
-    @classproperty
-    def registry(cls):
-        if cls._registry_ is not None:
-            return cls._registry_[:]
-
     @classmethod
     def register(cls, subcommand):
         if cls._registry_ is None:
@@ -482,9 +521,9 @@ class RootCommand(Command):
         cls._registry_.append(subcommand)
         return subcommand
 
-    @classproperty
-    def subcommands(cls):
-        subcommands = super().subcommands
+    @_classproperty
+    def _subcommands_(cls):
+        subcommands = super()._subcommands_
         if cls._registry_ is not None:
             subcommands += cls._registry_
         return subcommands
@@ -537,11 +576,11 @@ class Local(Command):
     # ...(as well as our own)
     local.SHH = SHH
 
-    run_kws = frozenset(('retcode', 'timeout'))
+    _run_kws_ = frozenset(('retcode', 'timeout'))
 
     @classmethod
-    def base_parser(cls):
-        parser = super().base_parser()
+    def _new_parser_(cls):
+        parser = super()._new_parser_()
         parser.add_argument(
             '-q', '--quiet',
             action='store_false',
@@ -575,7 +614,7 @@ class Local(Command):
         )
         return parser
 
-    def print_command(self, command, force=False):
+    def _show_command_(self, command, force=False):
         if force or self.args.show_commands or (
             self.args.show_commands is None and
             not self.args.execute_commands
@@ -605,8 +644,8 @@ class Local(Command):
             commands = (commands,)
 
         send = hasattr(commands, 'send')
-        run_kwargs = {key: value for (key, value) in vars(self.prepare).items()
-                      if key in self.run_kws}
+        run_kwargs = {key: getattr(self.prepare, key)
+                      for key in self._run_kws_ & self.prepare.__dict__.keys()}
 
         result = thrown = None
         empty_result = (None, None, None)
@@ -628,7 +667,7 @@ class Local(Command):
             else:
                 modifier = None
 
-            self.print_command(command)
+            self._show_command_(command)
 
             if args.execute_commands:
                 try:
@@ -667,16 +706,18 @@ class LocalRoot(Local, RootCommand):
 # command manufacture via decorator #
 #                                   #
 
-unset = object()
+Unset = object()
 
 
 class GeneratedCommand:
     """Mix-in for manufactured commands."""
 
+    _parser_args_ = ()
+
     def __init__(self, parser):
         super().__init__(parser)
 
-        for (args, kwargs) in self._args_:
+        for (args, kwargs) in self._parser_args_:
             parser.add_argument(*args, **kwargs)
 
 
@@ -718,7 +759,7 @@ class WrappedCallable:
         return f"{self.__class__.__name__}({self.__wrapped__!r})"
 
 
-c = WrappedCallable
+_c = WrappedCallable
 
 
 class CallableEnum(enum.Enum):
@@ -728,7 +769,7 @@ class CallableEnum(enum.Enum):
         return self.value(*args, **kwargs)
 
 
-def noopl(x):
+def _noopl(x):
     return x
 
 
@@ -758,23 +799,23 @@ class CommandDecorator:
     """
     class Binding(CallableEnum):
 
-        default = c(noopl)
-        static = c(staticmethod)
-        parent = c(CommandMethod)
+        default = _c(_noopl)
+        static = _c(staticmethod)
+        parent = _c(CommandMethod)
 
     def __init__(self,
                  *parser_args,
-                 base=unset,
-                 binding=unset,
+                 base=Unset,
+                 binding=Unset,
                  local=False,
                  root=False,
                  method_name=None,
                  **parser_kwargs):
-        if (local or root) and base is not unset:
+        if (local or root) and base is not Unset:
             raise TypeError("cannot apply 'local' or 'root' functionality to "
                             "arbitrary base")
 
-        if base is unset:
+        if base is Unset:
             if local:
                 self.base = LocalRoot if root else Local
             else:
@@ -782,7 +823,7 @@ class CommandDecorator:
         else:
             self.base = base
 
-        if binding is unset:
+        if binding is Unset:
             if issubclass(self.base, Local):
                 self.binding = self.Binding.default
             else:
@@ -795,7 +836,7 @@ class CommandDecorator:
         elif isinstance(binding, self.Binding):
             self.binding = binding
         else:
-            raise TypeError('binding must be either bool, Binding or unset')
+            raise TypeError('binding must be either bool, Binding or Unset')
 
         if method_name is None:
             self.method_name = 'prepare' if issubclass(self.base, Local) else '__call__'
@@ -809,7 +850,7 @@ class CommandDecorator:
 
         if inspect.isclass(target):
             if issubclass(target, GeneratedCommand):
-                target._args_.extend(args)
+                target._parser_args_.extend(args)
                 return target
 
         elif callable(target):
@@ -817,7 +858,7 @@ class CommandDecorator:
                 target.__name__,
                 (GeneratedCommand, self.base),
                 {
-                    '_args_': args,
+                    '_parser_args_': args,
                     '__doc__': target.__doc__,
                     '__module__': target.__module__,
                     self.method_name: self.binding(target),
@@ -872,7 +913,9 @@ def entrypoint(cls):
     """
     if not isinstance(cls, type) or not issubclass(cls, Command):
         raise TypeError(f"inappropriate entrypoint instance of type {cls.__class__}")
+
     cls._argcmdr_entrypoint_ = True
+
     return cls
 
 
