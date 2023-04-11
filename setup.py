@@ -39,7 +39,7 @@ setup(
     py_modules=[MODULE],
     install_requires=[
         'argcomplete>=1.9.4,<3',
-        'Dickens~=2.0.0',
+        'Dickens~=2.0',
         'plumbum~=1.8.1',
     ],
     entry_points={
