@@ -1,4 +1,5 @@
 """argcmdr's own management module"""
+import configparser
 import copy
 import re
 
@@ -40,7 +41,7 @@ class Manage(Local):
              _err) = yield self.local['bumpversion']['--list', args.part]
 
             if args.build:
-                yield self.root['build'].prepare()
+                yield from self.root['build'].prepare()
 
                 if args.release:
                     rel_args = copy.copy(args)
@@ -61,10 +62,25 @@ class Manage(Local):
         """build package"""
 
         def prepare(self):
-            return self.local['python'][
+            # determine current version
+            config = configparser.ConfigParser()
+            config.read('./setup.cfg')
+            version = config['bumpversion']['current_version']
+
+            yield self.local['python'][
                 'setup.py',
                 'sdist',
                 'bdist_wheel',
+            ]
+
+            yield self.local['mkdir']['-p', './pyz/']
+
+            yield self.local['shiv'][
+                '-c', 'manage',
+                '-o', f'./pyz/manage-{version}',
+                '--build-id', version,
+                '--platform-root',
+                '.',
             ]
 
     class Release(Local):

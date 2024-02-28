@@ -1,4 +1,11 @@
 bumpversion==0.5.3
 tox==3.25.1
 twine==1.10.0
-wheel==0.38.1
+wheel==0.37.1
+
+#
+# in lieu of v1.0.5 we'll use our fork of shiv to respect the installation platform's cache directories
+#
+# shiv==1.0.5
+#
+https://github.com/internet-equity/shiv-xdg/archive/5f99532.tar.gz
