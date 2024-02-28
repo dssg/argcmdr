@@ -54,7 +54,7 @@ class Manage(Local):
                             re.M,
                         )
                         rel_args.version = version_match.groups()
-                    yield self.root['release'].prepare(rel_args)
+                    yield from self.root['release'].prepare(rel_args)
             elif args.release:
                 parser.error('will not release package without build')
 
@@ -67,21 +67,46 @@ class Manage(Local):
             config.read('./setup.cfg')
             version = config['bumpversion']['current_version']
 
+            # build pure python distribution
             yield self.local['python'][
                 'setup.py',
                 'sdist',
                 'bdist_wheel',
             ]
 
+            # build zipapp
+            #
+            # we want to encourage easy installation as just "manage". but,
+            # until then, we want it to be properly labeled throughout its
+            # distribution. so, we'll build it in a temporary directory and wrap
+            # it in an otherwise-superfluous zip.
+            #
             yield self.local['mkdir']['-p', './pyz/']
 
-            yield self.local['shiv'][
-                '-c', 'manage',
-                '-o', f'./pyz/manage-{version}',
-                '--build-id', version,
-                '--platform-root',
-                '.',
+            (_code, stdout, _err) = yield self.local['mktemp'][
+                '-d',
+                '--tmpdir',
+                'manage-XXXXXXXX',
             ]
+
+            tmpdir = 'DRY-RUN' if stdout is None else stdout.strip()
+
+            try:
+                yield self.local['shiv'][
+                    '-c', 'manage',
+                    '-o', f'{tmpdir}/manage',
+                    '--build-id', version,
+                    '--platform-root',
+                    '.',
+                ]
+
+                yield self.local['zip'][
+                    '-j',
+                    f'./pyz/manage-{version}.zip',
+                    f'{tmpdir}/manage',
+                ]
+            finally:
+                yield self.local['rm']['-r', tmpdir]
 
     class Release(Local):
         """upload package(s) to pypi"""
@@ -89,12 +114,21 @@ class Manage(Local):
         def __init__(self, parser):
             parser.add_argument(
                 'version',
-                nargs='*',
+                nargs='+',
             )
 
         def prepare(self, args):
-            if args.version:
-                target = [f'dist/*{version}*' for version in args.version]
-            else:
-                target = 'dist/*'
-            return self.local['twine']['upload'][target]
+            yield self.local['twine']['upload'][[f'dist/*{version}*' for version in args.version]]
+
+            yield self.local['git']['push']
+            yield self.local['git']['push', '--tags']
+
+            for version in args.version:
+                yield self.local['gh'][
+                    'release',
+                    'create',
+                    version,
+                    f'./pyz/manage-{version}.zip#manage-{version}',
+                    '--generate-notes',
+                    '--verify-tag',
+                ]
