@@ -28,7 +28,7 @@ The thin ``argparse`` wrapper for quick, clear and easy declaration of (hierarch
 Setup
 =====
 
-``argcmdr`` is developed for Python version 3.6.3 and above, and may be built via ``setuptools``.
+``argcmdr`` is developed for Python version 3.6.3 and above.
 
 Python
 ------
@@ -53,6 +53,10 @@ To install from Github::
 To install from source::
 
     python setup.py install
+
+To just download the management-file command, ``manage``, as an all-in-one, pre-built executable::
+
+    curl -LO https://github.com/dssg/argcmdr/releases/download/1.1.0/manage-1.1.0.zip
 
 Tutorial
 ========
