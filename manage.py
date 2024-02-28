@@ -118,7 +118,10 @@ class Manage(Local):
             )
 
         def prepare(self, args):
-            yield self.local['twine']['upload'][[f'dist/*{version}*' for version in args.version]]
+            yield (
+                self.local.FG,
+                self.local['twine']['upload'][[f'dist/*{version}*' for version in args.version]],
+            )
 
             yield self.local['git']['push']
             yield self.local['git']['push', '--tags']
@@ -130,5 +133,4 @@ class Manage(Local):
                     version,
                     f'./pyz/manage-{version}.zip#manage-{version}',
                     '--generate-notes',
-                    '--verify-tag',
                 ]
