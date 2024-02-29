@@ -33,7 +33,17 @@ Setup
 Python
 ------
 
-If Python 3.6.3 or greater is not installed on your system, it is available from python.org_.
+Using Linux or OS X? A suitable version of Python is likely already installed on your system.
+
+For example, check the version of the default Python v3 executable on your system, if any::
+
+    python3 --version
+
+Or, list what versions of Python executables are installed::
+
+    ls -1 /usr/bin/python3.*
+
+If Python 3.6.3 – or greater – is not installed on your system, it is available from python.org_.
 
 However, depending on your system, you might prefer to install Python via a package manager, such as Homebrew_ on Mac OS X or APT on Debian-based Linux systems.
 
@@ -42,7 +52,7 @@ Alternatively, pyenv_ is highly recommended to manage arbitrary installations of
 argcmdr
 -------
 
-To install from PyPI::
+To install from PyPI_ via ``pip``::
 
     pip install argcmdr
 
@@ -54,7 +64,11 @@ To install from source::
 
     python setup.py install
 
-To just download the management-file command, ``manage``, as an all-in-one, pre-built executable::
+To install *just* `the management file`_ command, ``manage``, via pipx_::
+
+    pipx install argcmdr
+
+To download ``manage`` as an all-in-one, pre-built executable::
 
     curl -LO https://github.com/dssg/argcmdr/releases/download/1.1.0/manage-1.1.0.zip
 
@@ -1030,6 +1044,8 @@ Regardless of the method, having so enabled argument completion (for your comman
 .. _Homebrew: https://brew.sh/
 .. _pyenv: https://github.com/pyenv/pyenv
 .. _pyenv installer: https://github.com/pyenv/pyenv-installer#installation--update--uninstallation
+.. _pipx: https://pipx.pypa.io/
+.. _PyPI: https://pypi.org/project/argcmdr/
 .. _plumbum: https://plumbum.readthedocs.io/en/latest/local_commands.html#exit-codes
 .. _Dickens: https://github.com/dssg/dickens
 .. _install-cli: https://github.com/dssg/install-cli
